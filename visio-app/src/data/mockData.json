@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "name": "Jean Dupont",
+    "birthDate": "1965-03-15",
+    "cancerType": "Poumon",
+    "stage": "IIIb",
+    "status": "En cours de traitement",
+    "lastConsultation": "2024-01-10"
+  },
+  {
+    "id": 2,
+    "name": "Marie Durant",
+    "birthDate": "1970-05-12",
+    "cancerType": "Sein",
+    "stage": "IIa",
+    "status": "En rémission",
+    "lastConsultation": "2023-12-15"
+  },
+  {
+    "id": 3,
+    "name": "Pierre Kowalski",
+    "birthDate": "1958-11-23",
+    "cancerType": "Prostate",
+    "stage": "IV",
+    "status": "Soins palliatifs",
+    "lastConsultation": "2024-01-05"
+  },
+  {
+    "id": 4,
+    "name": "Sophie Martin",
+    "birthDate": "1982-07-30",
+    "cancerType": "Colorectal",
+    "stage": "III",
+    "status": "Chimiothérapie",
+    "lastConsultation": "2024-01-12"
+  },
+  {
+    "id": 5,
+    "name": "Luc Dubois",
+    "birthDate": "1975-02-14",
+    "cancerType": "Mélanome",
+    "stage": "I",
+    "status": "Surveillance",
+    "lastConsultation": "2023-11-20"
+  },
+  {
+    "id": 6,
+    "name": "Claire Lefebvre",
+    "birthDate": "1960-09-05",
+    "cancerType": "Ovaire",
+    "stage": "IIc",
+    "status": "Post-opératoire",
+    "lastConsultation": "2024-01-08"
+  },
+  {
+    "id": 7,
+    "name": "Thomas Bernard",
+    "birthDate": "1990-04-18",
+    "cancerType": "Testicule",
+    "stage": "I",
+    "status": "Guéri",
+    "lastConsultation": "2023-10-30"
+  },
+  {
+    "id": 8,
+    "name": "Julie Petit",
+    "birthDate": "1985-12-01",
+    "cancerType": "Thyroïde",
+    "stage": "I",
+    "status": "Traitement hormonal",
+    "lastConsultation": "2023-12-05"
+  }
+]
