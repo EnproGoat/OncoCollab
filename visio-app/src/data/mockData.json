@@ -2,6 +2,7 @@
   {
     "id": 1,
     "name": "Jean Dupont",
+    "profession": "Oncologue",
     "birthDate": "1965-03-15",
     "cancerType": "Poumon",
     "stage": "IIIb",
@@ -11,6 +12,7 @@
   {
     "id": 2,
     "name": "Marie Durant",
+    "profession": "Anatomo-pathologiste",
     "birthDate": "1970-05-12",
     "cancerType": "Sein",
     "stage": "IIa",
@@ -20,6 +22,7 @@
   {
     "id": 3,
     "name": "Pierre Kowalski",
+    "profession": "Radiologue",
     "birthDate": "1958-11-23",
     "cancerType": "Prostate",
     "stage": "IV",
@@ -29,6 +32,7 @@
   {
     "id": 4,
     "name": "Sophie Martin",
+    "profession": "Chirurgien",
     "birthDate": "1982-07-30",
     "cancerType": "Colorectal",
     "stage": "III",
@@ -38,37 +42,11 @@
   {
     "id": 5,
     "name": "Luc Dubois",
+    "profession": "Infirmière",
     "birthDate": "1975-02-14",
     "cancerType": "Mélanome",
     "stage": "I",
     "status": "Surveillance",
     "lastConsultation": "2023-11-20"
-  },
-  {
-    "id": 6,
-    "name": "Claire Lefebvre",
-    "birthDate": "1960-09-05",
-    "cancerType": "Ovaire",
-    "stage": "IIc",
-    "status": "Post-opératoire",
-    "lastConsultation": "2024-01-08"
-  },
-  {
-    "id": 7,
-    "name": "Thomas Bernard",
-    "birthDate": "1990-04-18",
-    "cancerType": "Testicule",
-    "stage": "I",
-    "status": "Guéri",
-    "lastConsultation": "2023-10-30"
-  },
-  {
-    "id": 8,
-    "name": "Julie Petit",
-    "birthDate": "1985-12-01",
-    "cancerType": "Thyroïde",
-    "stage": "I",
-    "status": "Traitement hormonal",
-    "lastConsultation": "2023-12-05"
   }
 ]
