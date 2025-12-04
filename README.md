@@ -18,7 +18,7 @@ Assurez-vous d’avoir installé :
 
 - Un réseau WiFi qui autorise la connexion entre les autres appareils
 > [!IMPORTANT]
-> ⚠️ Eduroam bloque les connexions WebRTC/TURN
+> ⚠️ Eduroam bloque les connexions direct à d'autre appareil
 
 ## 📡 2. Lancer le serveur WebSocket
 
@@ -79,8 +79,9 @@ const ICE_SERVERS: [
 ```
 
 > [!IMPORTANT]  
-> ⚠️ Le serveur TURN doit être accessible sur le même réseau local
-> ⚠️ Eduroam ne supporte pas la connexion direct entre appareil
+> ⚠️ Le serveur TURN doit être accessible sur le même réseau local 
+
+>RAPPEL : Eduroam ne supporte pas la connexion direct entre appareil
 
 ## 🖥️ 5. Lancer l'application front-end (Visio App)
 
