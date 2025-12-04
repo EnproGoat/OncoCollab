@@ -81,7 +81,7 @@ const ICE_SERVERS: [
 > [!IMPORTANT]  
 > ⚠️ Le serveur TURN doit être accessible sur le même réseau local 
 
->RAPPEL : Eduroam ne supporte pas la connexion direct entre appareil
+- RAPPEL : Eduroam ne supporte pas la connexion direct entre appareil
 
 ## 🖥️ 5. Lancer l'application front-end (Visio App)
 
