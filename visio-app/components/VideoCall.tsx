@@ -325,10 +325,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave }) => {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* formulaires */}
+        {/* Sidebar with professions */}
         <div className="w-64 bg-slate-900/50 backdrop-blur-sm border-r border-slate-800 flex flex-col">
           <div className="p-4 flex-1 overflow-y-auto">
-            <h3 className="text-slate-300 font-semibold mb-3 uppercase text-xs tracking-wider">Dossiers Patients</h3>
+            <h3 className="text-slate-300 font-semibold mb-3 uppercase text-xs tracking-wider">Participants</h3>
             <div className="space-y-2">
               {patientsData.map((patient) => (
                 <button
@@ -339,7 +339,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave }) => {
                     : 'bg-slate-800/50 hover:bg-teal-500/20 hover:border-teal-500/50 text-slate-200'
                     }`}
                 >
-                  {patient.name}
+                  {patient.profession}
                 </button>
               ))}
             </div>
@@ -355,37 +355,21 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave }) => {
           </div>
         </div>
 
-        {/* Affichage des données */}
+        {/* Patient info display - simplified and responsive */}
         <div className="flex-1 bg-slate-950 p-6 overflow-y-auto">
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 h-full shadow-xl">
             <h2 className="text-teal-400 text-2xl font-bold mb-4 flex items-center gap-2">
               <span className="text-3xl">📋</span> Dossier Médical
             </h2>
             <div className="text-white/80 space-y-4">
-              <div className="grid grid-cols-2 gap-4 mt-6">
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm">Nom du patient</div>
-                  <div className="text-white font-semibold">{selectedPatient.name}</div>
+              <div className="flex flex-col gap-4 mt-6">
+                <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+                  <div className="text-white/60 text-sm mb-2">Nom du professionnel</div>
+                  <div className="text-white font-semibold text-xl">{selectedPatient.name}</div>
                 </div>
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm">Date de naissance</div>
-                  <div className="text-white font-semibold">{selectedPatient.birthDate}</div>
-                </div>
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm">Type de cancer</div>
-                  <div className="text-white font-semibold">{selectedPatient.cancerType}</div>
-                </div>
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm">Stade</div>
-                  <div className="text-white font-semibold">{selectedPatient.stage}</div>
-                </div>
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm">Statut</div>
-                  <div className="text-white font-semibold">{selectedPatient.status}</div>
-                </div>
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm">Dernière consultation</div>
-                  <div className="text-white font-semibold">{selectedPatient.lastConsultation}</div>
+                <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+                  <div className="text-white/60 text-sm mb-2">Profession</div>
+                  <div className="text-white font-semibold text-xl">{selectedPatient.profession}</div>
                 </div>
               </div>
             </div>
