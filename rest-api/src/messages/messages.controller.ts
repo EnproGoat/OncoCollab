@@ -16,7 +16,7 @@ export class MessagesController {
         return this.messagesService.findAll();
     }
 
-    @Get('roomMessages/:roomId')
+    @Get('room/:roomId')
     findByRoom(@Param('roomId') roomId: string) {
         return this.messagesService.findByRoom(new Types.ObjectId(roomId));
     }
