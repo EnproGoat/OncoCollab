@@ -18,7 +18,7 @@ export class MessagesController {
 
     @Get('room/:roomId')
     findByRoom(@Param('roomId') roomId: string) {
-        return this.messagesService.findByRoom(new Types.ObjectId(roomId));
+        return this.messagesService.findByRoom(roomId);
     }
 
     @Delete(':id')

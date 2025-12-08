@@ -13,7 +13,7 @@ export class RoomsService {
     async create(createRoomDto: CreateRoomDto): Promise<Room> {
         const roomData = {
             ...createRoomDto,
-            name: uuidv4(),
+            roomId: uuidv4(),
         };
         const createdRoom = new this.roomModel(roomData);
         return createdRoom.save();

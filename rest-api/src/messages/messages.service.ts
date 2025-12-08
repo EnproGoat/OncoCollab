@@ -18,7 +18,7 @@ export class MessagesService {
         return;
     }
 
-    async findByRoom(roomId: Types.ObjectId): Promise<Message[]> {
+    async findByRoom(roomId: string): Promise<Message[]> {
         return this.messageModel.find({ room: roomId }).sort({ createdAt: 1 }).exec();
     }
 

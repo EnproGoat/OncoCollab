@@ -9,7 +9,7 @@ export class CreateMessageDto {
     @IsNotEmpty()
     sender: string;
 
-    @IsMongoId()
+    @IsString()
     @IsNotEmpty()
     room: string;
 

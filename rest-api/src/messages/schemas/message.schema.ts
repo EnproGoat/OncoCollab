@@ -11,8 +11,8 @@ export class Message {
     @Prop({ type: Types.ObjectId, ref: 'User', required: true })
     sender: Types.ObjectId;
 
-    @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
-    room: Types.ObjectId;
+    @Prop({ required: true, index: true })
+    room: string;
 
     @Prop({ default: Date.now })
     createdAt: Date;
