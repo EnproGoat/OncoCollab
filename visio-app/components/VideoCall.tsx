@@ -5,13 +5,13 @@ import patientsData from '../src/data/mockData.json';
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const SERVER_URL = 'https://15c05feccb28.ngrok-free.app'; //Pour un test entre vrai user (pas prod) il faut passer par ngrok (gratuit)
+const SERVER_URL = 'https://2ef56f669da9.ngrok-free.app';
 const ROOM_ID = '123';
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     {
-      urls: 'turn:10.206.69.73:3478',
+      urls: 'turn:10.144.58.73:3478',
       username: 'admin',
       credential: 'password'
     }
@@ -56,94 +56,105 @@ const VideoIcon = ({ isEnabled }: { isEnabled: boolean }) => (
 
 interface VideoCallProps {
   onLeave: () => void;
+  initialMicOn?: boolean;
+  initialCamOn?: boolean;
 }
 
-const VideoCall: React.FC<VideoCallProps> = ({ onLeave }) => {
+const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, initialCamOn = true }) => {
   const socketRef = useRef<AppSocket | null>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const otherUserIdRef = useRef<string | null>(null);
 
   const [myId, setMyId] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [isCaller, setIsCaller] = useState(false);
-  const [otherUserId, setOtherUserId] = useState<string | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+
   const [status, setStatus] = useState<string>("Démarrage...");
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isCamOn, setIsCamOn] = useState(true);
+  const [isMicOn, setIsMicOn] = useState(initialMicOn);
+  const [isCamOn, setIsCamOn] = useState(initialCamOn);
   const [selectedPatient, setSelectedPatient] = useState(patientsData[0]);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Mobile navigation state
+  const [activeTab, setActiveTab] = useState<'info' | 'participants' | 'chat'>('info');
+
+  // Apply initial settings when stream is ready and whenever state changes
+  useEffect(() => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => (track.enabled = isMicOn));
+      localStream.getVideoTracks().forEach(track => (track.enabled = isCamOn));
+    }
+  }, [localStream, isMicOn, isCamOn]);
+  // Note: We only want to enforce this when stream first arrives or we might fight with the toggle buttons if we aren't careful. 
+  // Actually, since isMicOn/isCamOn are state, this effect will run whenever they change too, which essentially duplicates toggleMic/toggleCam logic 
+  // BUT it guarantees consistency. The toggle functions just need to update state then.
+
+  const addRemoteStream = useCallback((id: string, stream: MediaStream) => {
+    setRemoteStreams(prev => {
+      const newMap = new Map(prev);
+      newMap.set(id, stream);
+      return newMap;
+    });
+  }, []);
+
+  const removeRemoteStream = useCallback((id: string) => {
+    setRemoteStreams(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(id);
+      return newMap;
+    });
+  }, []);
 
   const getMedia = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: true
+      });
+
+      // Apply initial constraints immediately to avoid blip
+      stream.getAudioTracks().forEach(track => (track.enabled = initialMicOn));
+      stream.getVideoTracks().forEach(track => (track.enabled = initialCamOn));
+
       setLocalStream(stream);
       localStreamRef.current = stream;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
       return stream;
     } catch (error) {
-      console.error('Erreur lors de l\'accès au média:', error);
-      setStatus("Erreur: Accès caméra/micro refusé. Veuillez autoriser l'accès.");
+      console.error('Erreur accès média:', error);
+      setStatus("Erreur: Accès caméra/micro refusé.");
       return null;
     }
-  }, []);
+  }, [initialMicOn, initialCamOn]);
 
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
+  const createPeerConnection = useCallback((targetId: string, stream: MediaStream) => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
 
-  const createAnswer = useCallback(async (offer: RTCSessionDescriptionInit, stream: MediaStream, targetId: string) => {
-    if (!pcRef.current || !socketRef.current) return;
-    const existingTracks = pcRef.current.getSenders().map(s => s.track).filter(Boolean as any);
-    stream.getTracks().forEach(track => {
-      if (!existingTracks.includes(track)) {
-        pcRef.current!.addTrack(track, stream);
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current) {
+        socketRef.current.emit('sending-ice-candidate', event.candidate.toJSON(), targetId);
       }
+    };
+
+    pc.ontrack = (event) => {
+      if (event.streams[0]) {
+        addRemoteStream(targetId, event.streams[0]);
+      }
+    };
+
+    stream.getTracks().forEach(track => {
+      pc.addTrack(track, stream);
     });
 
-    await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-
-    const answer = await pcRef.current.createAnswer();
-    await pcRef.current.setLocalDescription(answer);
-
-    socketRef.current.emit('sending-answer', answer, targetId);
-    console.log(`Answer envoyée à ${targetId}`);
-  }, []);
-
-  const createOffer = useCallback(async (stream: MediaStream, targetId: string) => {
-    if (!pcRef.current || !socketRef.current) return;
-    const existingTracks = pcRef.current.getSenders().map(s => s.track).filter(Boolean as any);
-    stream.getTracks().forEach(track => {
-      if (!existingTracks.includes(track)) {
-        pcRef.current!.addTrack(track, stream);
-      }
-    });
-
-    const offer = await pcRef.current.createOffer();
-    await pcRef.current.setLocalDescription(offer);
-
-    socketRef.current.emit('sending-offer', offer, targetId);
-    console.log(`Offer envoyée à ${targetId}`);
-  }, []);
-
-  const toggleMic = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => (track.enabled = !track.enabled));
-      setIsMicOn(prev => !prev);
-    }
-  };
-
-  const toggleCam = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => (track.enabled = !track.enabled));
-      setIsCamOn(prev => !prev);
-    }
-  };
+    peersRef.current.set(targetId, pc);
+    return pc;
+  }, [addRemoteStream]);
 
   useEffect(() => {
+    let mounted = true;
     const streamPromise = getMedia();
     const socket = io(SERVER_URL, {
       transports: ['polling', 'websocket'],
@@ -157,262 +168,290 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave }) => {
     socket.emit('join-room', ROOM_ID);
 
     socket.on('connect', () => {
-      setMyId(socket.id || null);
-      setStatus("Connecté au serveur. En attente...");
-    });
-
-    socket.on('connect_error', (err) => {
-      setStatus(`Erreur connexion: ${err.message}`);
-    });
-
-    pcRef.current = new RTCPeerConnection(ICE_SERVERS);
-
-    pcRef.current.ontrack = (event: RTCTrackEvent) => {
-      if (remoteVideoRef.current && event.streams[0]) {
-        setRemoteStream(event.streams[0]);
-        remoteVideoRef.current.srcObject = event.streams[0];
+      if (mounted) {
+        setMyId(socket.id || null);
+        setStatus("Connecté. En attente de participants...");
       }
-    };
-
-    pcRef.current.onicecandidate = (event) => {
-      if (event.candidate && otherUserIdRef.current && socketRef.current) {
-        socketRef.current.emit('sending-ice-candidate', event.candidate.toJSON(), otherUserIdRef.current);
-      }
-    };
-
-    socket.on('user-joined', async (userId: string) => {
-      console.log(`Nouveau pair rejoint: ${userId}. Je l'appelle.`);
-      setStatus(`Utilisateur détecté. Appel en cours...`);
-      setIsCaller(true);
-      setOtherUserId(userId);
-      otherUserIdRef.current = userId;
-      const stream = await streamPromise;
-      if (stream) createOffer(stream, userId);
     });
 
-    socket.on('get-existing-users', async (existingUsers: string[]) => {
-      if (existingUsers.length > 0) {
-        console.log(`Déjà ${existingUsers.length} utilisateur(s) présent(s).`);
-        setStatus(`Utilisateur présent. En attente d'appel...`);
-        setOtherUserId(existingUsers[0]);
-        otherUserIdRef.current = existingUsers[0];
-        setIsCaller(false);
-      } else {
-        setStatus("Seul dans la salle. En attente...");
+    socket.on('user-joined', async (userId) => {
+      if (!mounted) return;
+      console.log(`User joined: ${userId}`);
+      const stream = localStreamRef.current;
+      if (stream) {
+        const pc = createPeerConnection(userId, stream);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('sending-offer', offer, userId);
       }
     });
 
     socket.on('receiving-offer', async (offer, fromId) => {
-      console.log('Offer reçue. Création de l\'Answer.');
-      setStatus("Appel entrant reçu. Connexion...");
-      setOtherUserId(fromId);
-      otherUserIdRef.current = fromId;
-      const stream = await streamPromise;
-      if (stream) createAnswer(offer, stream, fromId);
-    });
-
-    socket.on('receiving-answer', async (answer) => {
-      console.log('Answer reçue. Définition de la description distante.');
-      if (pcRef.current) {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+      if (!mounted) return;
+      console.log(`Offer from: ${fromId}`);
+      const stream = localStreamRef.current || await streamPromise;
+      if (stream) {
+        const pc = createPeerConnection(fromId, stream);
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('sending-answer', answer, fromId);
       }
     });
 
-    socket.on('receiving-ice-candidate', async (candidate) => {
-      console.log('ICE Candidate reçu. Ajout à la connexion.');
-      try {
-        await pcRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (error) {
-        console.error('Erreur lors de l\'ajout de l\'ICE Candidate:', error);
+    socket.on('receiving-answer', async (answer: RTCSessionDescriptionInit, fromId?: string) => {
+      if (fromId) {
+        const pc = peersRef.current.get(fromId);
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      }
+    });
+
+    socket.on('receiving-ice-candidate', async (candidate, fromId) => {
+      const pc = peersRef.current.get(fromId);
+      if (pc) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
+
+    socket.on('user-left', (userId: string) => {
+      console.log(`User left: ${userId}`);
+      if (peersRef.current.has(userId)) {
+        peersRef.current.get(userId)?.close();
+        peersRef.current.delete(userId);
+        removeRemoteStream(userId);
+      }
+    });
+
+    streamPromise.then(stream => {
+      if (!mounted && stream) {
+        stream.getTracks().forEach(track => track.stop());
       }
     });
 
     return () => {
+      mounted = false;
       socket.disconnect();
-      pcRef.current?.close();
+      peersRef.current.forEach(pc => pc.close());
+      peersRef.current.clear();
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
         localStreamRef.current = null;
       }
     };
+  }, [getMedia, createPeerConnection, addRemoteStream, removeRemoteStream]);
 
-  }, [getMedia, createOffer, createAnswer]);
-
-  const callUser = async () => {
-    if (otherUserId && localStream) {
-      setStatus("Tentative d'appel manuel...");
-      createOffer(localStream, otherUserId);
-    } else {
-      alert("Impossible d'appeler : pas d'utilisateur ou pas de caméra.");
-    }
+  const toggleMic = () => {
+    // Just update state, the useEffect will handle the stream tracks
+    setIsMicOn(prev => !prev);
   };
+
+  const toggleCam = () => {
+    // Just update state, the useEffect will handle the stream tracks
+    setIsCamOn(prev => !prev);
+  };
+
+  const allStreams = [
+    { id: 'me', stream: localStream, isLocal: true },
+    ...Array.from(remoteStreams.entries()).map(([id, stream]) => ({ id, stream, isLocal: false }))
+  ].filter(item => item.stream !== null) as { id: string; stream: MediaStream; isLocal: boolean }[];
+
+  const visibleStreams = isFullScreen ? allStreams : allStreams.slice(0, 5);
+  const hiddenCount = allStreams.length - visibleStreams.length;
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100">
-      <div className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+      {/* Header */}
+      <div className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shrink-0">
         <div className="flex items-center justify-between px-4 py-2">
           <div className="text-white text-sm">
-            OncoCollab | ID: {myId ? myId.substring(0, 8) : 'Connexion...'}
+            OncoCollab | ID: {myId ? myId.substring(0, 8) : '...'} | {allStreams.length} participant(s)
           </div>
-          <div className="text-white/80 text-sm">{status}</div>
-          <button className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all">
-            ⚙️ Paramètres
+          <div className="text-white/80 text-sm hidden md:block">{status}</div>
+          <button onClick={() => setIsFullScreen(!isFullScreen)} className={`px-4 py-2 rounded-lg transition-all text-sm ${isFullScreen ? 'bg-teal-600 text-white' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
+            {isFullScreen ? 'Quitter' : '🖥️ Plein écran'}
           </button>
         </div>
 
-        <div className="flex gap-4 px-4 pb-3 overflow-x-auto justify-center">
-          <div className="relative shrink-0 w-48 h-32 bg-black rounded-lg overflow-hidden">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute bottom-2 left-2 bg-black/60 text-white px-2 py-1 rounded text-xs">
-              Moi
-            </div>
-            <div className="absolute top-2 right-2 flex gap-1">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isMicOn ? 'bg-teal-500' : 'bg-red-500'}`}>
-                {isMicOn ? '🎤' : '🔇'}
-              </div>
-            </div>
-          </div>
-          {/* Camera autres */}
-          <div className="relative shrink-0 w-48 h-32 bg-black rounded-lg overflow-hidden">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute bottom-2 left-2 bg-black/60 text-white px-2 py-1 rounded text-xs">
-              Interlocuteur
-            </div>
-          </div>
-
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="relative shrink-0 w-48 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-              <span className="text-white/40 text-4xl">👤</span>
-              <div className="absolute bottom-2 left-2 bg-black/60 text-white px-2 py-1 rounded text-xs">
-                Participant {i + 2}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="relative flex justify-center items-center px-4 pb-3">
-          <div className="flex gap-4">
+        {/* Video Grid Area */}
+        <div className={`
+             ${isFullScreen ? 'fixed inset-0 z-50 bg-slate-950 p-4' : 'relative p-4 flex justify-center'}
+             transition-all duration-300
+        `}>
+          {isFullScreen && (
             <button
-              onClick={toggleMic}
-              className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg ${isMicOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
+              onClick={() => setIsFullScreen(false)}
+              className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full"
             >
-              <MicIcon isEnabled={isMicOn} />
+              ✕
             </button>
-            <button
-              onClick={toggleCam}
-              className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg ${isCamOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
-            >
-              <VideoIcon isEnabled={isCamOn} />
-            </button>
-          </div>
-          <div className="absolute right-4">
-            <button className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all">
-              🖥️ Plein écran
-            </button>
-          </div>
-        </div>
-      </div>
+          )}
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar with professions */}
-        <div className="w-64 bg-slate-900/50 backdrop-blur-sm border-r border-slate-800 flex flex-col">
-          <div className="p-4 flex-1 overflow-y-auto">
-            <h3 className="text-slate-300 font-semibold mb-3 uppercase text-xs tracking-wider">Participants</h3>
-            <div className="space-y-2">
-              {patientsData.map((patient) => (
-                <button
-                  key={patient.id}
-                  onClick={() => setSelectedPatient(patient)}
-                  className={`w-full px-4 py-3 border border-transparent text-left transition-all text-sm rounded-lg ${selectedPatient.id === patient.id
-                    ? 'bg-teal-500/20 border-teal-500/50 text-teal-200'
-                    : 'bg-slate-800/50 hover:bg-teal-500/20 hover:border-teal-500/50 text-slate-200'
-                    }`}
-                >
-                  {patient.profession}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-4 border-t border-slate-800 bg-slate-900/80">
-            <button
-              onClick={onLeave}
-              className="w-full px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg transition-all font-semibold flex items-center justify-center gap-2"
-            >
-              <span>🚪</span> Quitter la réunion
-            </button>
-          </div>
-        </div>
-
-        {/* Patient info display - simplified and responsive */}
-        <div className="flex-1 bg-slate-950 p-6 overflow-y-auto">
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 h-full shadow-xl">
-            <h2 className="text-teal-400 text-2xl font-bold mb-4 flex items-center gap-2">
-              <span className="text-3xl">📋</span> Dossier Médical
-            </h2>
-            <div className="text-white/80 space-y-4">
-              <div className="flex flex-col gap-4 mt-6">
-                <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm mb-2">Nom du professionnel</div>
-                  <div className="text-white font-semibold text-xl">{selectedPatient.name}</div>
+          <div className={`flex flex-wrap justify-center content-center gap-4 w-full max-w-7xl mx-auto h-full ${isFullScreen ? '' : ''}`}>
+            {visibleStreams.map((item) => (
+              <div key={item.id} className="relative bg-black rounded-xl overflow-hidden shadow-lg border border-slate-800 w-full max-w-[20rem] sm:w-80 aspect-video shrink-0">
+                {(!isCamOn && item.isLocal) && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-10">
+                    <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mb-2">
+                      <span className="text-xl">📷</span>
+                    </div>
+                  </div>
+                )}
+                <video
+                  ref={(el) => {
+                    if (el && item.stream) el.srcObject = item.stream;
+                  }}
+                  autoPlay
+                  muted={item.isLocal} // Mute self to avoid echo
+                  playsInline
+                  className={`w-full h-full object-cover ${item.isLocal ? 'scale-x-[-1]' : ''} ${(!isCamOn && item.isLocal) ? 'hidden' : ''}`}
+                />
+                <div className="absolute bottom-2 left-2 bg-black/60 text-white px-3 py-1 rounded-full text-xs font-medium z-20">
+                  {item.isLocal ? 'Moi' : `Participant ${item.id.substring(0, 4)}`}
                 </div>
-                <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm mb-2">Profession</div>
-                  <div className="text-white font-semibold text-xl">{selectedPatient.profession}</div>
+                {item.isLocal && (
+                  <div className="absolute top-2 right-2 flex gap-1 z-20">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isMicOn ? 'bg-teal-500' : 'bg-red-500'}`}>
+                      {isMicOn ? '🎤' : '🔇'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Indicator for hidden users */}
+            {!isFullScreen && hiddenCount > 0 && (
+              <div
+                onClick={() => setIsFullScreen(true)}
+                className="relative bg-slate-800 rounded-xl overflow-hidden shadow-lg border border-slate-700 flex items-center justify-center cursor-pointer hover:bg-slate-700 transition w-full max-w-[20rem] sm:w-80 aspect-video shrink-0"
+              >
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-white mb-2">+{hiddenCount}</div>
+                  <div className="text-slate-400 text-sm">autres participants</div>
+                  <div className="text-teal-400 text-xs mt-2 uppercase tracking-wide font-bold">Voir tout</div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Chat */}
-        <div className="w-80 bg-slate-900/50 backdrop-blur-sm border-l border-slate-800 flex flex-col">
-          <div className="p-4 border-b border-slate-800 bg-slate-900/80">
-            <h3 className="text-white font-semibold">💬 Chat</h3>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-              <div className="text-white/60 text-xs mb-1">Dr. Martin - 14:32</div>
-              <div className="text-white text-sm">Bonjour à tous, prêt pour la RCP</div>
-            </div>
-            <div className="bg-teal-600/20 border border-teal-500/30 rounded-lg p-3 ml-6">
-              <div className="text-white/60 text-xs mb-1">Moi - 14:33</div>
-              <div className="text-white text-sm">Oui, j'ai préparé le dossier</div>
-            </div>
-            <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-              <div className="text-white/60 text-xs mb-1">Dr. Dubois - 14:35</div>
-              <div className="text-white text-sm">Parfait, on peut commencer</div>
-            </div>
-          </div>
-
-          {/* Input chat */}
-          <div className="p-4 border-t border-slate-800 bg-slate-900/80">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Tapez votre message..."
-                className="flex-1 px-4 py-2 bg-slate-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 placeholder-slate-500 border border-slate-700"
-              />
-              <button className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-all">
-                📤
+        {/* Controls Bar */}
+        {!isFullScreen && (
+          <div className="flex justify-center items-center px-4 pb-3">
+            <div className="flex gap-4">
+              <button
+                onClick={toggleMic}
+                className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg transform hover:scale-105 ${isMicOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
+              >
+                <MicIcon isEnabled={isMicOn} />
+              </button>
+              <button
+                onClick={toggleCam}
+                className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg transform hover:scale-105 ${isCamOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
+              >
+                <VideoIcon isEnabled={isCamOn} />
+              </button>
+              <button
+                onClick={onLeave}
+                className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transform hover:scale-105"
+                title="Quitter"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
           </div>
-        </div>
+        )}
       </div>
+
+      {!isFullScreen && (
+        <div className="flex-1 flex overflow-hidden relative">
+          {/* Sidebar */}
+          <div className={`${activeTab === 'participants' ? 'absolute inset-0 z-40 bg-slate-950 w-full flex' : 'hidden'} md:flex md:static md:w-64 bg-slate-900/50 backdrop-blur-sm border-r border-slate-800 flex-col`}>
+            <div className="p-4 flex-1 overflow-y-auto">
+              <h3 className="text-slate-300 font-semibold mb-3 uppercase text-xs tracking-wider">Participants</h3>
+              <div className="space-y-2">
+                {patientsData.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setSelectedPatient(p);
+                      if (window.innerWidth < 768) setActiveTab('info');
+                    }}
+                    className={`w-full px-4 py-3 border border-transparent text-left transition-all text-sm rounded-lg ${selectedPatient.id === p.id
+                      ? 'bg-teal-500/20 border-teal-500/50 text-teal-200'
+                      : 'bg-slate-800/50 hover:bg-teal-500/20 hover:border-teal-500/50 text-slate-200'
+                      }`}
+                  >
+                    {p.profession}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content (Patient Info) */}
+          <div className={`${activeTab === 'info' ? 'flex' : 'hidden'} md:flex flex-1 bg-slate-950 p-6 overflow-y-auto`}>
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-xl w-full">
+              <h2 className="text-teal-400 text-2xl font-bold mb-4 flex items-center gap-2">
+                <span>📋</span> Dossier Médical
+              </h2>
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                  <div className="text-white/60 text-sm mb-1">Nom</div>
+                  <div className="text-white font-semibold text-lg">{selectedPatient.name}</div>
+                </div>
+                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                  <div className="text-white/60 text-sm mb-1">Profession</div>
+                  <div className="text-white font-semibold text-lg">{selectedPatient.profession}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Chat */}
+          <div className={`${activeTab === 'chat' ? 'absolute inset-0 z-40 bg-slate-950 w-full flex' : 'hidden'} lg:flex lg:static lg:w-80 bg-slate-900/50 backdrop-blur-sm border-l border-slate-800 flex-col`}>
+            {/* Chat UI */}
+            <div className="p-4 border-b border-slate-800 bg-slate-900/80">
+              <h3 className="text-white font-semibold">Message</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
+                <div className="text-white/60 text-xs mb-1">Système</div>
+                <div className="text-white text-sm">Bienvenue dans la réunion.</div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-800">
+              <input type="text" placeholder="Message..." className="w-full bg-slate-800 border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-500" />
+            </div>
+          </div>
+
+          {/* Mobile Tab Bar (Visible on < lg, handles sidebar/chat) */}
+          <div className="lg:hidden absolute bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 z-50 md:justify-end md:gap-4 md:px-6">
+            <button
+              onClick={() => setActiveTab('participants')}
+              className={`p-2 rounded-lg flex flex-col items-center md:hidden ${activeTab === 'participants' ? 'text-teal-400' : 'text-slate-400'}`}
+            >
+              <span className="text-xl">👥</span>
+              <span className="text-[10px]">Participants</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`p-2 rounded-lg flex flex-col items-center md:hidden ${activeTab === 'info' ? 'text-teal-400' : 'text-slate-400'}`}
+            >
+              <span className="text-xl">📋</span>
+              <span className="text-[10px]">Info</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`p-2 rounded-lg flex flex-col items-center ${activeTab === 'chat' ? 'text-teal-400' : 'text-slate-400'}`}
+            >
+              <span className="text-xl">💬</span>
+              <span className="text-[10px]">Chat</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

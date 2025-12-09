@@ -17,7 +17,7 @@ export class Room {
     @Prop([{ type: Types.ObjectId, ref: 'User' }])
     roomAdmin: Types.ObjectId;
 
-    @Prop([{ default: Date.now()}])
+    @Prop({ default: Date.now })
     createdAt: Date;
 
     @Prop({ required: true })

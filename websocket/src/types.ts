@@ -2,10 +2,10 @@
 
 export interface ServerToClientEvents {
   // Envoie l'ID de l'utilisateur qui vient de se connecter
-  "user-joined": (socketId: string) => void; 
+  "user-joined": (socketId: string) => void;
 
   // Envoie la liste de tous les utilisateurs déjà connectés dans la room
-  "get-existing-users": (users: string[]) => void; 
+  "get-existing-users": (users: string[]) => void;
 
   // Notifie qu'un utilisateur s'est déconnecté
   "user-left": (socketId: string) => void;
@@ -15,15 +15,21 @@ export interface ServerToClientEvents {
 
   // Relai de l'Answer SDP
   "receiving-answer": (answer: RTCSessionDescriptionInit, fromId: string) => void;
-  
+
   // Relai des ICE Candidates
   "receiving-ice-candidate": (candidate: RTCIceCandidateInit, fromId: string) => void;
+
+  // Réception d'un message du chat
+  "receive-chat-message": (content: string, senderId: string, timestamp: Date) => void;
+
+  // Historique des messages
+  "message-history": (messages: any[]) => void;
 }
 
 // Événements que le Client envoie au Serveur
 export interface ClientToServerEvents {
   // Le client rejoint une room spécifique
-  "join-room": (roomId: string) => void; 
+  "join-room": (roomId: string) => void;
 
   // Envoi de l'Offer SDP à un autre utilisateur spécifique
   "sending-offer": (offer: RTCSessionDescriptionInit, toId: string) => void;
@@ -33,4 +39,7 @@ export interface ClientToServerEvents {
 
   // Envoi des ICE Candidates à un autre utilisateur spécifique
   "sending-ice-candidate": (candidate: RTCIceCandidateInit, toId: string) => void;
+
+  // Envoi d'un message du chat
+  "send-chat-message": (content: string, roomId: string, senderId: string) => void;
 }

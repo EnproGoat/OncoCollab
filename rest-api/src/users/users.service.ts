@@ -4,7 +4,7 @@ import { Model } from 'mongoose';
 import { User } from './schemas/user.schema';
 import * as argon2 from "argon2";
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserUso } from './dto/update-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
@@ -29,7 +29,7 @@ export class UsersService {
         return this.userModel.findOne({ email }).exec();
     }
 
-    update(id: string, updateUserDto: UpdateUserUso) {
+    update(id: string, updateUserDto: UpdateUserDto) {
         return this.userModel.findByIdAndUpdate(id, updateUserDto, { new: true }).exec();
     }
 

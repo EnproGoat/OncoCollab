@@ -1,11 +1,5 @@
 import React from 'react';
-import profilePic from '../src/assets/ousmane.png';
 
-const currentUser = {
-    name: "Dr. Ousmane Sidibe",
-    job: "Oncologue",
-    avatar: profilePic
-};
 
 const meetings = [
     {
@@ -36,19 +30,32 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
+    const [user, setUser] = React.useState<any>(null);
+
+    React.useEffect(() => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            setUser(JSON.parse(storedUser));
+        }
+    }, []);
+
+    const displayUser = user || {
+        fistName: "FIRSTNAME NOT FOUND",
+        lastName: "LASTNAME NOT FOUND",
+        job: "JOB NOT FOUND"
+    };
+
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 p-8 font-sans">
             <div className="flex items-center gap-4 mb-12 bg-slate-900/50 p-4 rounded-2xl border border-slate-800 w-fit backdrop-blur-sm">
-                <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-teal-500/50 shadow-lg shadow-teal-500/20">
-                    <img
-                        src={currentUser.avatar}
-                        alt="Profile"
-                        className="w-full h-full object-cover bg-slate-800"
-                    />
+                <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-teal-500/50 shadow-lg shadow-teal-500/20 flex items-center justify-center bg-slate-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                    </svg>
                 </div>
                 <div>
-                    <h1 className="text-xl font-bold text-white">{currentUser.name}</h1>
-                    <p className="text-teal-400 text-sm font-medium">({currentUser.job})</p>
+                    <h1 className="text-xl font-bold text-white">{displayUser.fistName} {displayUser.lastName}</h1>
+                    <p className="text-teal-400 text-sm font-medium">({displayUser.job})</p>
                 </div>
             </div>
 
