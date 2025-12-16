@@ -24,7 +24,7 @@ export class AuthService {
 
         const passwordMatches = await argon2.verify(user.password, authDto.password);
         if (!passwordMatches) {
-            throw new UnauthorizedException('Access Denied');
+            throw new UnauthorizedException('Access Denied: Invalid password');
         }
 
         return user;

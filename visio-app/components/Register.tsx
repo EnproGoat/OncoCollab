@@ -9,7 +9,7 @@ interface RegisterProps {
 const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin }) => {
     const [formData, setFormData] = useState({
         email: '',
-        fistName: '', // matching backend schema typo "fistName"
+        fistName: '',
         lastName: '',
         job: '',
         password: '',
@@ -48,7 +48,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin }) =>
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 font-sans">
+        <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 font-sans">
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl max-w-md w-full">
                 <div className="text-center mb-8">
                     <div className="mx-auto w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-teal-500/20">
@@ -158,7 +158,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin }) =>
                     <button
                         type="submit"
                         disabled={loading}
-                        className={`w-full bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 text-white font-semibold py-3.5 rounded-lg shadow-lg hover:shadow-teal-500/25 transition-all duration-300 transform hover:-translate-y-0.5 mt-2 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`w-full bg-linear-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 text-white font-semibold py-3.5 rounded-lg shadow-lg hover:shadow-teal-500/25 transition-all duration-300 transform hover:-translate-y-0.5 mt-2 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {loading ? 'Création du compte...' : 'Créer un compte'}
                     </button>

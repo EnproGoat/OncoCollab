@@ -94,6 +94,6 @@ io.on('connection', (socket: AppSocket) => {
 );
 
 
-httpServer.listen(PORT, () => {
-    console.log(`Serveur de signalisation démarré sur http://localhost:${PORT}`);
+httpServer.listen(PORT, 'localhost', () => {
+    console.log(`Serveur de signalisation démarré sur https://localhost:${PORT}`);
 });

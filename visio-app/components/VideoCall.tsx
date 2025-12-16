@@ -5,13 +5,13 @@ import patientsData from '../src/data/mockData.json';
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const SERVER_URL = 'https://2ef56f669da9.ngrok-free.app';
+const SERVER_URL = "https://cc38c5c8f116.ngrok-free.app";
 const ROOM_ID = '123';
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     {
-      urls: 'turn:10.144.58.73:3478',
+      urls: 'turn:10.184.232.73:3478',
       username: 'admin',
       credential: 'password'
     }
@@ -76,19 +76,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   const [selectedPatient, setSelectedPatient] = useState(patientsData[0]);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Mobile navigation state
   const [activeTab, setActiveTab] = useState<'info' | 'participants' | 'chat'>('info');
 
-  // Apply initial settings when stream is ready and whenever state changes
   useEffect(() => {
     if (localStream) {
       localStream.getAudioTracks().forEach(track => (track.enabled = isMicOn));
       localStream.getVideoTracks().forEach(track => (track.enabled = isCamOn));
     }
   }, [localStream, isMicOn, isCamOn]);
-  // Note: We only want to enforce this when stream first arrives or we might fight with the toggle buttons if we aren't careful. 
-  // Actually, since isMicOn/isCamOn are state, this effect will run whenever they change too, which essentially duplicates toggleMic/toggleCam logic 
-  // BUT it guarantees consistency. The toggle functions just need to update state then.
 
   const addRemoteStream = useCallback((id: string, stream: MediaStream) => {
     setRemoteStreams(prev => {
@@ -113,7 +108,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
         audio: true
       });
 
-      // Apply initial constraints immediately to avoid blip
       stream.getAudioTracks().forEach(track => (track.enabled = initialMicOn));
       stream.getVideoTracks().forEach(track => (track.enabled = initialCamOn));
 
@@ -243,12 +237,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   }, [getMedia, createPeerConnection, addRemoteStream, removeRemoteStream]);
 
   const toggleMic = () => {
-    // Just update state, the useEffect will handle the stream tracks
     setIsMicOn(prev => !prev);
   };
 
   const toggleCam = () => {
-    // Just update state, the useEffect will handle the stream tracks
     setIsCamOn(prev => !prev);
   };
 
@@ -426,7 +418,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
             </div>
           </div>
 
-          {/* Mobile Tab Bar (Visible on < lg, handles sidebar/chat) */}
+          {/* Mobile Tab Bar */}
           <div className="lg:hidden absolute bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 z-50 md:justify-end md:gap-4 md:px-6">
             <button
               onClick={() => setActiveTab('participants')}

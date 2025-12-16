@@ -8,11 +8,13 @@ export const api = {
             body: JSON.stringify({ email, password }),
         });
         if (!response.ok) {
+            const text = await response.text();
+            console.error("Login failed, status:", response.status, "content:", text);
             try {
-                const error = await response.json();
+                const error = JSON.parse(text);
                 throw new Error(error.message || "Login failed");
-            } catch {
-                throw new Error("Login failed");
+            } catch (e) {
+                throw new Error(text || "Login failed");
             }
         }
         return response.json();
