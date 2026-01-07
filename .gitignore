@@ -1,3 +1,4 @@
 .netlify
 .env
 /certs
+/server/node_modules
