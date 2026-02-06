@@ -1,0 +1,8 @@
+export { default as Home } from './Home';
+export { default as Login } from './Login';
+export { default as Register } from './Register';
+export { default as Meetings } from './Meetings';
+export { default as Chat } from './Chat';
+export { default as WSIAnalysis } from './WSIAnalysis';
+export { default as PreMeeting } from './PreMeeting';
+export { default as MeetingCall } from './MeetingCall';

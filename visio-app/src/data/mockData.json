@@ -1,52 +1,36 @@
 [
   {
     "id": 1,
-    "name": "Jean Dupont",
+    "firstName": "Ousmane",
+    "lastName": "Sidibe",
     "profession": "Oncologue",
-    "birthDate": "1965-03-15",
-    "cancerType": "Poumon",
-    "stage": "IIIb",
-    "status": "En cours de traitement",
-    "lastConsultation": "2024-01-10"
+    "test": "1",
+    "donnee":"data",
+    "date":"test",
+    "folie0":"true"
   },
   {
     "id": 2,
-    "name": "Marie Durant",
-    "profession": "Anatomo-pathologiste",
-    "birthDate": "1970-05-12",
-    "cancerType": "Sein",
-    "stage": "IIa",
-    "status": "En rémission",
-    "lastConsultation": "2023-12-15"
+    "firstName": "Pari",
+    "lastName": "Durant",
+    "profession": "Anatomo-pathologiste"
   },
   {
     "id": 3,
-    "name": "Pierre Kowalski",
-    "profession": "Radiologue",
-    "birthDate": "1958-11-23",
-    "cancerType": "Prostate",
-    "stage": "IV",
-    "status": "Soins palliatifs",
-    "lastConsultation": "2024-01-05"
+    "firstName": "Pierre",
+    "lastName": "Rocher",
+    "profession": "Radiologue"
   },
   {
     "id": 4,
-    "name": "Sophie Martin",
-    "profession": "Chirurgien",
-    "birthDate": "1982-07-30",
-    "cancerType": "Colorectal",
-    "stage": "III",
-    "status": "Chimiothérapie",
-    "lastConsultation": "2024-01-12"
+    "firstName": "Sophie",
+    "lastName": "Martin",
+    "profession": "Chirurgien"
   },
   {
     "id": 5,
-    "name": "Luc Dubois",
-    "profession": "Infirmière",
-    "birthDate": "1975-02-14",
-    "cancerType": "Mélanome",
-    "stage": "I",
-    "status": "Surveillance",
-    "lastConsultation": "2023-11-20"
+    "firstName": "Luc",
+    "lastName": "Dubois",
+    "profession": "Infirmière"
   }
 ]

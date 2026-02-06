@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 interface PreMeetingProps {
-    onJoin: (isMicOn: boolean, isCamOn: boolean) => void;
+    onJoin: (isMicOn: boolean, isCamOn: boolean, videoDeviceId: string, audioDeviceId: string) => void;
     onCancel: () => void;
 }
 
@@ -212,7 +212,7 @@ const PreMeeting: React.FC<PreMeetingProps> = ({ onJoin, onCancel }) => {
 
                     <div className="flex flex-col gap-3 w-full">
                         <button
-                            onClick={() => onJoin(isMicOn, isCamOn)}
+                            onClick={() => onJoin(isMicOn, isCamOn, selectedVideoDevice, selectedAudioDevice)}
                             className="w-full py-4 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl shadow-lg shadow-teal-500/20 transition-all transform hover:-translate-y-1"
                         >
                             Rejoindre la réunion

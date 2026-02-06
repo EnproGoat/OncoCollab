@@ -115,12 +115,12 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin }) =>
                                 onChange={handleChange}
                             >
                                 <option value="" disabled>Sélectionnez votre rôle</option>
-                                <option value="Oncologist">Oncologue</option>
-                                <option value="Pathologist">Anatomopathologiste</option>
-                                <option value="Radiologist">Radiologue</option>
-                                <option value="Surgeon">Chirurgien</option>
-                                <option value="Nurse">Infirmier(ère)</option>
-                                <option value="Other">Autre</option>
+                                <option value="Oncologue">Oncologue</option>
+                                <option value="Anatomopathologiste">Anatomopathologiste</option>
+                                <option value="Radiologue">Radiologue</option>
+                                <option value="Chirurgien">Chirurgien</option>
+                                <option value="Infirmier(ère)">Infirmier(ère)</option>
+                                <option value="Autre">Autre</option>
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
                                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>

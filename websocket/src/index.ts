@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
+import * as fs from 'fs';
 import { ClientToServerEvents, ServerToClientEvents } from './types';
 import apiService from './services/api.service';
 
@@ -19,16 +21,31 @@ app.use((req, res, next) => {
 
 app.use(cors({ origin: "*" }));
 
-const httpServer = createServer(app);
+// Vérifier si les certificats SSL existent
+const certPath = '/app/certs/cert.pem';
+const keyPath = '/app/certs/key.pem';
+let server: ReturnType<typeof createServer> | ReturnType<typeof createHttpsServer>;
+let isHttps = false;
 
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    const httpsOptions = {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+    };
+    server = createHttpsServer(httpsOptions, app);
+    isHttps = true;
+    console.log('SSL certificates loaded, HTTPS enabled');
+} else {
+    server = createServer(app);
+    console.log('SSL certificates not found, running in HTTP mode');
+}
+
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
     }
 });
-
-const PORT = 5000;
 
 io.on('connection', (socket: AppSocket) => {
     console.log(`[CONNEXION] Nouvel utilisateur: ${socket.id}`);
@@ -93,7 +110,8 @@ io.on('connection', (socket: AppSocket) => {
 }
 );
 
+const PORT = process.env.PORT || 4000;
 
-httpServer.listen(PORT, 'localhost', () => {
-    console.log(`Serveur de signalisation démarré sur https://localhost:${PORT}`);
+server.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`Serveur de signalisation démarré sur ${isHttps ? 'https' : 'http'}://0.0.0.0:${PORT}`);
 });

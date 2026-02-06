@@ -1,19 +1,19 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { ClientToServerEvents, ServerToClientEvents } from '../types/socket';
-import patientsData from '../src/data/mockData.json';
+import { api } from '../src/services/api';
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const SERVER_URL = "https://cc38c5c8f116.ngrok-free.app";
-const ROOM_ID = '123';
+const SERVER_URL = import.meta.env.VITE_WS_URL || "http://localhost:4000";
+const ROOM_ID = import.meta.env.VITE_ROOM_ID || '123';
 const ICE_SERVERS = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: import.meta.env.VITE_STUN_URL || 'stun:stun.l.google.com:19302' },
     {
-      urls: 'turn:10.184.232.73:3478',
-      username: 'admin',
-      credential: 'password'
+      urls: import.meta.env.VITE_TURN_URL || 'turn:localhost:3478',
+      username: import.meta.env.VITE_TURN_USERNAME || 'admin',
+      credential: import.meta.env.VITE_TURN_PASSWORD || 'password'
     }
   ],
 };
@@ -58,9 +58,12 @@ interface VideoCallProps {
   onLeave: () => void;
   initialMicOn?: boolean;
   initialCamOn?: boolean;
+  initialVideoDeviceId?: string;
+  initialAudioDeviceId?: string;
+  meetingId?: string;
 }
 
-const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, initialCamOn = true }) => {
+const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, initialCamOn = true, initialVideoDeviceId, initialAudioDeviceId, meetingId }) => {
   const socketRef = useRef<AppSocket | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -73,10 +76,54 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   const [status, setStatus] = useState<string>("Démarrage...");
   const [isMicOn, setIsMicOn] = useState(initialMicOn);
   const [isCamOn, setIsCamOn] = useState(initialCamOn);
-  const [selectedPatient, setSelectedPatient] = useState(patientsData[0]);
+  const [patientsData, setPatientsData] = useState<any[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [currentMeeting, setCurrentMeeting] = useState<any>(null);
 
   const [activeTab, setActiveTab] = useState<'info' | 'participants' | 'chat'>('info');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState<Record<string, any>>({});
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldValue, setNewFieldValue] = useState('');
+
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>(initialVideoDeviceId || '');
+  const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>(initialAudioDeviceId || '');
+  const [showDeviceMenu, setShowDeviceMenu] = useState<'video' | 'audio' | null>(null);
+
+  useEffect(() => {
+    const loadMeetingData = async () => {
+      if (!meetingId) {
+        setStatus('⚠️ Aucune réunion sélectionnée');
+        return;
+      }
+      
+      try {
+        const meeting = await api.getMeeting(meetingId);
+        setCurrentMeeting(meeting);
+        
+        const patientRecords = await api.getMeetingPatientRecords(meetingId);
+        
+        const filledRecords = patientRecords.map((record: any) => ({
+          ...record.patientRecord,
+          submittedBy: record.participant,
+          filledAt: record.filledAt
+        }));
+        
+        setPatientsData(filledRecords);
+        if (filledRecords.length > 0) {
+          setSelectedPatient(filledRecords[0]);
+        }
+        setStatus('Connecté. Dossiers chargés.');
+      } catch (error) {
+        console.error('Erreur chargement meeting:', error);
+        setStatus('⚠️ Erreur de chargement des dossiers');
+      }
+    };
+    loadMeetingData();
+  }, [meetingId]);
 
   useEffect(() => {
     if (localStream) {
@@ -84,6 +131,87 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
       localStream.getVideoTracks().forEach(track => (track.enabled = isCamOn));
     }
   }, [localStream, isMicOn, isCamOn]);
+
+  useEffect(() => {
+    const getDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setVideoDevices(devices.filter(d => d.kind === 'videoinput'));
+        setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
+      } catch (error) {
+        console.error('Erreur énumération devices:', error);
+      }
+    };
+    getDevices();
+  }, []);
+
+  const changeDevice = useCallback(async (type: 'video' | 'audio', deviceId: string) => {
+    if (!localStreamRef.current) return;
+
+    try {
+      const oldStream = localStreamRef.current;
+      
+      if (type === 'video') {
+        setSelectedVideoDevice(deviceId);
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } },
+          audio: selectedAudioDevice 
+            ? { deviceId: { exact: selectedAudioDevice } }
+            : true
+        });
+
+        newStream.getVideoTracks().forEach(track => (track.enabled = isCamOn));
+        newStream.getAudioTracks().forEach(track => (track.enabled = isMicOn));
+
+        oldStream.getVideoTracks().forEach(track => track.stop());
+
+        peersRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender && newStream.getVideoTracks()[0]) {
+            sender.replaceTrack(newStream.getVideoTracks()[0]);
+          }
+        });
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = newStream;
+        }
+        
+        localStreamRef.current = newStream;
+        setLocalStream(newStream);
+      } else {
+        setSelectedAudioDevice(deviceId);
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: selectedVideoDevice 
+            ? { deviceId: { exact: selectedVideoDevice } }
+            : { facingMode: "user" },
+          audio: { deviceId: { exact: deviceId } }
+        });
+
+        newStream.getVideoTracks().forEach(track => (track.enabled = isCamOn));
+        newStream.getAudioTracks().forEach(track => (track.enabled = isMicOn));
+
+        oldStream.getAudioTracks().forEach(track => track.stop());
+
+        peersRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender && newStream.getAudioTracks()[0]) {
+            sender.replaceTrack(newStream.getAudioTracks()[0]);
+          }
+        });
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = newStream;
+        }
+        
+        localStreamRef.current = newStream;
+        setLocalStream(newStream);
+      }
+      
+      setShowDeviceMenu(null);
+    } catch (error) {
+      console.error(`Erreur changement ${type}:`, error);
+    }
+  }, [selectedVideoDevice, selectedAudioDevice, isCamOn, isMicOn]);
 
   const addRemoteStream = useCallback((id: string, stream: MediaStream) => {
     setRemoteStreams(prev => {
@@ -103,10 +231,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
 
   const getMedia = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
-        audio: true
-      });
+      const constraints: MediaStreamConstraints = {
+        video: selectedVideoDevice 
+          ? { deviceId: { exact: selectedVideoDevice }, facingMode: "user" }
+          : { facingMode: "user" },
+        audio: selectedAudioDevice
+          ? { deviceId: { exact: selectedAudioDevice } }
+          : true
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       stream.getAudioTracks().forEach(track => (track.enabled = initialMicOn));
       stream.getVideoTracks().forEach(track => (track.enabled = initialCamOn));
@@ -122,7 +256,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
       setStatus("Erreur: Accès caméra/micro refusé.");
       return null;
     }
-  }, [initialMicOn, initialCamOn]);
+  }, [initialMicOn, initialCamOn, selectedVideoDevice, selectedAudioDevice]);
 
   const createPeerConnection = useCallback((targetId: string, stream: MediaStream) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -252,9 +386,164 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   const visibleStreams = isFullScreen ? allStreams : allStreams.slice(0, 5);
   const hiddenCount = allStreams.length - visibleStreams.length;
 
+  const handleSaveEdit = async () => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const patientId = selectedPatient._id;
+      
+      const response = await fetch(`${API_URL}/patients/${patientId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      if (response.ok) {
+        const updatedPatient = await response.json();
+        const updatedData = patientsData.map(p => 
+          p._id === patientId ? updatedPatient : p
+        );
+        setPatientsData(updatedData);
+        setSelectedPatient(updatedPatient);
+        
+        setStatus('✓ Dossier sauvegardé dans MongoDB');
+        setTimeout(() => setStatus('Connecté. En attente de participants...'), 3000);
+      } else {
+        throw new Error('Échec de la sauvegarde');
+      }
+    } catch (error) {
+      console.error('Erreur sauvegarde:', error);
+      setStatus('⚠️ Erreur de connexion à la base de données');
+      setTimeout(() => setStatus('Connecté. En attente de participants...'), 3000);
+    }
+    
+    setIsEditModalOpen(false);
+  };
+
+  const handleAddField = () => {
+    if (newFieldName && newFieldValue) {
+      setEditForm({ ...editForm, [newFieldName]: newFieldValue });
+      setNewFieldName('');
+      setNewFieldValue('');
+    }
+  };
+
+  const handleDeleteField = (fieldName: string) => {
+    const { [fieldName]: _, ...rest } = editForm as Record<string, any>;
+    setEditForm(rest);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100">
-      {/* Header */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 rounded-xl border border-slate-700 shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <svg className="w-6 h-6 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Modifier le dossier
+              </h2>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              {Object.entries(editForm)
+                .filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt'].includes(key))
+                .map(([key, value]) => (
+                <div key={key} className="flex gap-2 items-start">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      {key.charAt(0).toUpperCase() + key.slice(1)}
+                    </label>
+                    <input
+                      type="text"
+                      value={value}
+                      onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                      style={{ letterSpacing: '0' }}
+                      placeholder={`Entrez ${key}`}
+                    />
+                  </div>
+                  <button
+                    onClick={() => handleDeleteField(key)}
+                    className="mt-8 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                    title="Supprimer ce champ"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+
+              <div className="border-t border-slate-700 pt-4 mt-6">
+                <h3 className="text-sm font-semibold text-teal-400 mb-3 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Ajouter un nouveau champ
+                </h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newFieldName}
+                    onChange={(e) => setNewFieldName(e.target.value)}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors text-sm"
+                    style={{ letterSpacing: '0' }}
+                    placeholder="Nom du champ"
+                  />
+                  <input
+                    type="text"
+                    value={newFieldValue}
+                    onChange={(e) => setNewFieldValue(e.target.value)}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors text-sm"
+                    style={{ letterSpacing: '0' }}
+                    placeholder="Valeur"
+                  />
+                  <button
+                    onClick={handleAddField}
+                    className="px-4 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors flex items-center gap-1"
+                    title="Ajouter"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-800 bg-slate-900/50">
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-5 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-medium transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shrink-0">
         <div className="flex items-center justify-between px-4 py-2">
           <div className="text-white text-sm">
@@ -266,7 +555,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
           </button>
         </div>
 
-        {/* Video Grid Area */}
         <div className={`
              ${isFullScreen ? 'fixed inset-0 z-50 bg-slate-950 p-4' : 'relative p-4 flex justify-center'}
              transition-all duration-300
@@ -295,7 +583,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
                     if (el && item.stream) el.srcObject = item.stream;
                   }}
                   autoPlay
-                  muted={item.isLocal} // Mute self to avoid echo
+                  muted={item.isLocal}
                   playsInline
                   className={`w-full h-full object-cover ${item.isLocal ? 'scale-x-[-1]' : ''} ${(!isCamOn && item.isLocal) ? 'hidden' : ''}`}
                 />
@@ -312,7 +600,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
               </div>
             ))}
 
-            {/* Indicator for hidden users */}
             {!isFullScreen && hiddenCount > 0 && (
               <div
                 onClick={() => setIsFullScreen(true)}
@@ -328,22 +615,77 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
           </div>
         </div>
 
-        {/* Controls Bar */}
         {!isFullScreen && (
           <div className="flex justify-center items-center px-4 pb-3">
             <div className="flex gap-4">
-              <button
-                onClick={toggleMic}
-                className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg transform hover:scale-105 ${isMicOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
-              >
-                <MicIcon isEnabled={isMicOn} />
-              </button>
-              <button
-                onClick={toggleCam}
-                className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg transform hover:scale-105 ${isCamOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
-              >
-                <VideoIcon isEnabled={isCamOn} />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={toggleMic}
+                  className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg transform hover:scale-105 ${isMicOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
+                >
+                  <MicIcon isEnabled={isMicOn} />
+                </button>
+                <button
+                  onClick={() => setShowDeviceMenu(showDeviceMenu === 'audio' ? null : 'audio')}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center text-white text-xs shadow-lg"
+                  title="Changer de microphone"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                  </svg>
+                </button>
+                {showDeviceMenu === 'audio' && (
+                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-2 min-w-[250px] z-50">
+                    <div className="text-xs text-slate-400 font-semibold mb-2 px-2">Microphone</div>
+                    {audioDevices.map(device => (
+                      <button
+                        key={device.deviceId}
+                        onClick={() => changeDevice('audio', device.deviceId)}
+                        className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-700 transition-colors ${
+                          selectedAudioDevice === device.deviceId ? 'bg-teal-500/20 text-teal-300' : 'text-white'
+                        }`}
+                      >
+                        {device.label || `Microphone ${device.deviceId.slice(0, 5)}...`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="relative">
+                <button
+                  onClick={toggleCam}
+                  className={`p-4 rounded-full transition-all flex items-center justify-center shadow-lg transform hover:scale-105 ${isCamOn ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}
+                >
+                  <VideoIcon isEnabled={isCamOn} />
+                </button>
+                <button
+                  onClick={() => setShowDeviceMenu(showDeviceMenu === 'video' ? null : 'video')}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-slate-700 hover:bg-slate-600 rounded-full flex items-center justify-center text-white text-xs shadow-lg"
+                  title="Changer de caméra"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                  </svg>
+                </button>
+                {showDeviceMenu === 'video' && (
+                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-2 min-w-[250px] z-50">
+                    <div className="text-xs text-slate-400 font-semibold mb-2 px-2">Caméra</div>
+                    {videoDevices.map(device => (
+                      <button
+                        key={device.deviceId}
+                        onClick={() => changeDevice('video', device.deviceId)}
+                        className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-700 transition-colors ${
+                          selectedVideoDevice === device.deviceId ? 'bg-teal-500/20 text-teal-300' : 'text-white'
+                        }`}
+                      >
+                        {device.label || `Caméra ${device.deviceId.slice(0, 5)}...`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
               <button
                 onClick={onLeave}
                 className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg transform hover:scale-105"
@@ -358,52 +700,69 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
 
       {!isFullScreen && (
         <div className="flex-1 flex overflow-hidden relative">
-          {/* Sidebar */}
           <div className={`${activeTab === 'participants' ? 'absolute inset-0 z-40 bg-slate-950 w-full flex' : 'hidden'} md:flex md:static md:w-64 bg-slate-900/50 backdrop-blur-sm border-r border-slate-800 flex-col`}>
             <div className="p-4 flex-1 overflow-y-auto">
-              <h3 className="text-slate-300 font-semibold mb-3 uppercase text-xs tracking-wider">Participants</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-slate-300 font-semibold uppercase text-xs tracking-wider">Participants</h3>
+                <button
+                  onClick={() => {
+                    setEditForm({ ...selectedPatient });
+                    setIsEditModalOpen(true);
+                  }}
+                  className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded-lg text-xs transition-all flex items-center gap-1"
+                  title="Modifier le dossier"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span>Éditer</span>
+                </button>
+              </div>
               <div className="space-y-2">
-                {patientsData.map((p) => (
+                {patientsData.map((p: any) => (
                   <button
-                    key={p.id}
+                    key={p._id}
                     onClick={() => {
                       setSelectedPatient(p);
                       if (window.innerWidth < 768) setActiveTab('info');
                     }}
-                    className={`w-full px-4 py-3 border border-transparent text-left transition-all text-sm rounded-lg ${selectedPatient.id === p.id
+                    className={`w-full px-4 py-3 border border-transparent text-left transition-all text-sm rounded-lg ${selectedPatient?._id === p._id
                       ? 'bg-teal-500/20 border-teal-500/50 text-teal-200'
                       : 'bg-slate-800/50 hover:bg-teal-500/20 hover:border-teal-500/50 text-slate-200'
                       }`}
                   >
-                    {p.profession}
+                    {p.profession || p.firstName || 'Patient'}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Main Content (Patient Info) */}
-          <div className={`${activeTab === 'info' ? 'flex' : 'hidden'} md:flex flex-1 bg-slate-950 p-6 overflow-y-auto`}>
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-xl w-full">
-              <h2 className="text-teal-400 text-2xl font-bold mb-4 flex items-center gap-2">
-                <span>📋</span> Dossier Médical
-              </h2>
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm mb-1">Nom</div>
-                  <div className="text-white font-semibold text-lg">{selectedPatient.name}</div>
-                </div>
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <div className="text-white/60 text-sm mb-1">Profession</div>
-                  <div className="text-white font-semibold text-lg">{selectedPatient.profession}</div>
+          <div className={`${activeTab === 'info' ? 'flex' : 'hidden'} md:flex flex-1 bg-slate-950 overflow-y-auto`}>
+            <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-xl w-full max-w-6xl mx-auto h-fit m-6">
+              <div className="p-6">
+                <h2 className="text-teal-400 text-2xl font-bold mb-4 flex items-center gap-2">
+                  <span>📋</span> Dossier Médical
+                </h2>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-min">
+                  {selectedPatient && Object.entries(selectedPatient)
+                    .filter(([key]) => !['_id', '__v', 'createdAt', 'updatedAt'].includes(key))
+                    .map(([key, value]) => (
+                    <div key={key} className="bg-slate-800/50 p-4 rounded-lg border border-slate-700 h-fit">
+                      <div className="text-white/60 text-sm mb-1">
+                        {key.charAt(0).toUpperCase() + key.slice(1)}
+                      </div>
+                      <div className="text-white font-semibold text-base wrap-break-words overflow-wrap-anywhere">
+                        {String(value)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Chat */}
           <div className={`${activeTab === 'chat' ? 'absolute inset-0 z-40 bg-slate-950 w-full flex' : 'hidden'} lg:flex lg:static lg:w-80 bg-slate-900/50 backdrop-blur-sm border-l border-slate-800 flex-col`}>
-            {/* Chat UI */}
             <div className="p-4 border-b border-slate-800 bg-slate-900/80">
               <h3 className="text-white font-semibold">Message</h3>
             </div>
@@ -418,7 +777,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
             </div>
           </div>
 
-          {/* Mobile Tab Bar */}
           <div className="lg:hidden absolute bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 z-50 md:justify-end md:gap-4 md:px-6">
             <button
               onClick={() => setActiveTab('participants')}
