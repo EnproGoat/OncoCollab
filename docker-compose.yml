@@ -1,21 +1,120 @@
 services:
+  mongodb:
+    image: mongo:7
+    container_name: oncocollab-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: oncocollab
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - oncocollab-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  rest-api:
+    build:
+      context: ./rest-api
+      dockerfile: Dockerfile.dev
+    container_name: oncocollab-rest-api-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      MONGO_URI: mongodb://admin:password123@mongodb:27017/oncocollab?authSource=admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - oncocollab-network
+    volumes:
+      - ./rest-api/src:/app/src
+      - ./certs:/app/certs:ro
+    command: npm run start:dev
+
+  websocket:
+    build:
+      context: ./websocket
+      dockerfile: Dockerfile.dev
+    container_name: oncocollab-websocket-dev
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      API_URL: ${API_URL:-http://rest-api:3000}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rest-api:
+        condition: service_started
+    networks:
+      - oncocollab-network
+    volumes:
+      - ./websocket/src:/app/src
+      - ./certs:/app/certs:ro
+
+  visio-app:
+    build:
+      context: ./visio-app
+      dockerfile: Dockerfile.dev
+    container_name: oncocollab-visio-app-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=${API_URL}
+      - VITE_WS_URL=${WEBSOCKET_URL}
+    depends_on:
+      - rest-api
+      - websocket
+    networks:
+      - oncocollab-network
+    volumes:
+      - ./visio-app/src:/app/src
+      - ./visio-app/components:/app/components
+      - ./visio-app/public:/app/public
+      - ./visio-app/types:/app/types
+      - /app/node_modules
+
   coturn:
     image: coturn/coturn
-    container_name: coturn
+    container_name: oncocollab-coturn
     restart: unless-stopped
     ports:
       - "3478:3478/tcp"
       - "3478:3478/udp"
       - "50000-50020:50000-50020/udp"
     environment:
-      - EXTERNAL_IP=${EXTERNAL_IP}
+      - EXTERNAL_IP=${EXTERNAL_IP:-127.0.0.1}
     command:
       - -n                        
       - --log-file=stdout         
       - --min-port=50000          
       - --max-port=50020          
       - --listening-ip=0.0.0.0    
-      - --external-ip=${EXTERNAL_IP}
-      - --realm=mon-local        
+      - --external-ip=${EXTERNAL_IP:-127.0.0.1}
+      - --realm=oncocollab        
       - --user=admin:password     
-      - --lt-cred-mech            
+      - --lt-cred-mech
+    networks:
+      - oncocollab-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  oncocollab-network:
+    driver: bridge            
