@@ -1,38 +1,32 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function bootstrap() {
-  try {
-    const keyPath = join(process.cwd(), '..', 'certs', 'key.pem');
-    const certPath = join(process.cwd(), '..', 'certs', 'cert.pem');
-    console.log('Current working directory:', process.cwd());
-    console.log('Attempting to load key from:', keyPath);
-    console.log('Attempting to load cert from:', certPath);
-
-    if (!require('fs').existsSync(keyPath)) {
-      console.error(`Key file not found at: ${keyPath}`);
-    }
-    if (!require('fs').existsSync(certPath)) {
-      console.error(`Cert file not found at: ${certPath}`);
-    }
-
-    const httpsOptions = {
-      key: readFileSync(keyPath),
-      cert: readFileSync(certPath),
+  let httpsOptions = undefined;
+  
+  // Vérifier si les certificats SSL existent
+  const certPath = '/app/certs/cert.pem';
+  const keyPath = '/app/certs/key.pem';
+  
+  if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
     };
-
-    const app = await NestFactory.create(AppModule, {
-      httpsOptions,
-    });
-    app.enableCors({
-      origin: '*',
-    });
-    await app.listen(3000, '0.0.0.0');
-    console.log('Application is listening on port 3000');
-  } catch (error) {
-    console.error('Error starting server:', error);
+    console.log('SSL certificates loaded, HTTPS enabled');
+  } else {
+    console.log('SSL certificates not found, running in HTTP mode');
   }
+
+  const app = await NestFactory.create(AppModule, { httpsOptions });
+  app.enableCors({
+    origin: '*',
+  });
+  
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
+  console.log(`Application is listening on ${httpsOptions ? 'https' : 'http'}://localhost:${port}`);
 }
 bootstrap();

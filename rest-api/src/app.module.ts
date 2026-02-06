@@ -5,8 +5,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { MessagesModule } from './messages/messages.module';
-import { RoomsModule } from './rooms/rooms.module';
 import { AuthModule } from './auth/auth.module';
+import { PatientRecordsModule } from './patient-records/patient-records.module';
+import { MeetingsModule } from './meetings/meetings.module';
+import { ProfessionsModule } from './professions/professions.module';
+import { SeedModule } from './seed/seed.module';
 
 @Module({
   imports: [
@@ -23,8 +26,11 @@ import { AuthModule } from './auth/auth.module';
     }),
     UsersModule,
     MessagesModule,
-    RoomsModule,
     AuthModule,
+    PatientRecordsModule,
+    MeetingsModule,
+    ProfessionsModule,
+    SeedModule,
   ],
   controllers: [AppController],
   providers: [AppService],

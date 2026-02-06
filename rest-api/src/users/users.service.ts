@@ -17,20 +17,19 @@ export class UsersService {
     }
 
     findAll() {
-        // à faire si on veut un panel admin de l'app
-        return;
+        return this.userModel.find().populate('profession').exec();
     }
 
     findOne(id: string) {
-        return this.userModel.findById(id).exec();
+        return this.userModel.findById(id).populate('profession').exec();
     }
 
     findByEmail(email: string) {
-        return this.userModel.findOne({ email }).exec();
+        return this.userModel.findOne({ email }).populate('profession').exec();
     }
 
     update(id: string, updateUserDto: UpdateUserDto) {
-        return this.userModel.findByIdAndUpdate(id, updateUserDto, { new: true }).exec();
+        return this.userModel.findByIdAndUpdate(id, updateUserDto, { new: true }).populate('profession').exec();
     }
 
     remove(id: string) {
