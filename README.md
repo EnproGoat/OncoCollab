@@ -19,6 +19,14 @@ Assurez-vous d’avoir installé :
 - Un réseau WiFi qui autorise la connexion entre les autres appareils
 > [!IMPORTANT]
 > ⚠️ Eduroam bloque les connexions direct à d'autre appareil
+> Il faut aussi créer les certifications pour la connexion HTTPS !!!
+
+Pour créer une certification : 
+``` bash
+mkcert -install # Il faudra installer mkcert avant
+# Génère un certificat pour localhost, l'IP locale et le nom d'hôte
+mkcert localhost 127.0.0.1 nom_pc # On remplace nom pc par le nom de votre pc (suffit de faire hostname dans le terminal)
+```
 
 ## 📡 2. Lancer le serveur WebSocket
 
@@ -91,3 +99,13 @@ npm install
 npm run dev
 ```
 Vous aurez normalement un lien pour accéder à l'application
+
+> [!IMPORTANT]  
+> ⚠️ Vous devez configurer votre .env (dsl ya un .env sur OncoCollab, rest-api)
+
+Pour le .env de OncoCollab à définir :
+- EXTERNAL_IP
+
+Pour le .env de rest-api à définir :
+- MONGO_URI (il faudra créer un cluster mongodb c'est gratuit ou vous faites un conteneur mais faudra modifier le code)
+
