@@ -6,7 +6,7 @@ import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import * as fs from 'fs';
 import { ClientToServerEvents, ServerToClientEvents } from './types';
-import apiService from './services/api.service';
+import { saveMessage, getMessagesForRoom } from './services/db.service';
 
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -66,7 +66,7 @@ io.on('connection', (socket: AppSocket) => {
 
         socket.emit('get-existing-users', activeUsers);
 
-        const messages = await apiService.getMessagesForRoom(roomId);
+        const messages = await getMessagesForRoom(roomId);
         if (messages) {
             socket.emit('message-history', messages);
         }
@@ -74,12 +74,15 @@ io.on('connection', (socket: AppSocket) => {
         socket.broadcast.to(roomId).emit('user-joined', socket.id);
     });
 
-    socket.on('disconnect', async (roomId: string) => {
+    socket.on('disconnecting', () => {
         console.log(`[DECONNEXION] Utilisateur: ${socket.id}`);
-
-
-
-        socket.broadcast.to(roomId).emit('user-left', socket.id);
+        // 'disconnecting' fires before the socket leaves its rooms,
+        // so we can broadcast to all rooms the socket was in
+        for (const room of socket.rooms) {
+            if (room !== socket.id) {
+                socket.broadcast.to(room).emit('user-left', socket.id);
+            }
+        }
     });
 
     socket.on('sending-offer', (offer, toId) => {
@@ -100,11 +103,24 @@ io.on('connection', (socket: AppSocket) => {
         socket.to(toId).emit('receiving-ice-candidate', candidate, socket.id);
     });
 
+    socket.on('announce-name', (name: string, roomId: string) => {
+        socket.broadcast.to(roomId).emit('participant-announced-name', socket.id, name);
+    });
+
+    socket.on('leave-room', (roomId: string) => {
+        socket.leave(roomId);
+    });
+
     socket.on('send-chat-message', async (content, roomId, senderId) => {
         console.log(`[CHAT] Message de ${senderId} dans room ${roomId}: ${content}`);
 
-        await apiService.saveMessage(content, senderId, roomId);
+        try {
+            await saveMessage(content, senderId, roomId);
+        } catch (err) {
+            console.error('[CHAT] Failed to persist message:', err);
+        }
 
+        // Always broadcast even if persistence fails
         socket.broadcast.to(roomId).emit('receive-chat-message', content, senderId, new Date());
     });
 }

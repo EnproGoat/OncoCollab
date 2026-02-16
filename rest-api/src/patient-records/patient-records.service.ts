@@ -1,46 +1,69 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { PatientRecord } from './schemas/patient-record.schema';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientRecordDto, UpdatePatientRecordDto } from './dto/patient-record.dto';
+import { serializePatientRecord } from '../common/serializers/serializers';
 import { seedPatientRecords } from './seed-data';
 
 @Injectable()
 export class PatientRecordsService implements OnModuleInit {
-  constructor(
-    @InjectModel(PatientRecord.name) private patientRecordModel: Model<PatientRecord>,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async onModuleInit() {
-    const count = await this.patientRecordModel.countDocuments().exec();
+    const count = await this.prisma.patientRecord.count();
     if (count === 0) {
-      await this.patientRecordModel.insertMany(seedPatientRecords);
-      console.log('✓ Données patient records importées depuis mockData.json');
+      for (const record of seedPatientRecords) {
+        const { profession, ...dynamicData } = record;
+        await this.prisma.patientRecord.create({
+          data: { profession, data: dynamicData },
+        });
+      }
+      console.log('✓ Données patient records importées depuis seedData');
     }
   }
 
-  async getAll(): Promise<PatientRecord[]> {
-    return await this.patientRecordModel.find().exec();
+  async getAll() {
+    const records = await this.prisma.patientRecord.findMany();
+    return records.map(serializePatientRecord);
   }
 
-  async findById(id: string): Promise<PatientRecord> {
-    return await this.patientRecordModel.findById(id).exec();
+  async findById(id: string) {
+    const record = await this.prisma.patientRecord.findUnique({
+      where: { id },
+    });
+    return serializePatientRecord(record);
   }
 
-  async create(createPatientRecordDto: CreatePatientRecordDto): Promise<PatientRecord> {
-    const createdPatientRecord = new this.patientRecordModel(createPatientRecordDto);
-    return await createdPatientRecord.save();
+  async create(createPatientRecordDto: CreatePatientRecordDto) {
+    const { profession, ...dynamicData } = createPatientRecordDto;
+    const record = await this.prisma.patientRecord.create({
+      data: {
+        profession: profession || 'Patient',
+        data: dynamicData,
+      },
+    });
+    return serializePatientRecord(record);
   }
 
-  async update(id: string, updatePatientRecordDto: UpdatePatientRecordDto): Promise<PatientRecord> {
-    return await this.patientRecordModel.findByIdAndUpdate(
-      id,
-      { $set: updatePatientRecordDto },
-      { new: true },
-    ).exec();
+  async update(id: string, updatePatientRecordDto: UpdatePatientRecordDto) {
+    const existing = await this.prisma.patientRecord.findUnique({
+      where: { id },
+    });
+    const { profession, ...dynamicFields } = updatePatientRecordDto;
+    const mergedData = {
+      ...((existing?.data as object) ?? {}),
+      ...dynamicFields,
+    };
+    const record = await this.prisma.patientRecord.update({
+      where: { id },
+      data: {
+        ...(profession && { profession }),
+        data: mergedData,
+      },
+    });
+    return serializePatientRecord(record);
   }
 
-  async deleteById(id: string): Promise<any> {
-    return await this.patientRecordModel.findByIdAndDelete(id).exec();
+  async deleteById(id: string) {
+    return this.prisma.patientRecord.delete({ where: { id } });
   }
 }

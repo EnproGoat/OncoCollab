@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_TURN_URL: string
   readonly VITE_TURN_USERNAME: string
   readonly VITE_TURN_PASSWORD: string
+  readonly VITE_REPORT_API_URL: string
 }
 
 interface ImportMeta {

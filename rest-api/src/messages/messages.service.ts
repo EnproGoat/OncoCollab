@@ -1,16 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Message } from './schemas/message.schema';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { serializeMessage } from '../common/serializers/serializers';
 
 @Injectable()
 export class MessagesService {
-    constructor(@InjectModel(Message.name) private messageModel: Model<Message>) { }
+    constructor(private prisma: PrismaService) {}
 
-    create(createMessageDto: CreateMessageDto) {
-        const createdMessage = new this.messageModel(createMessageDto);
-        return createdMessage.save();
+    async create(createMessageDto: CreateMessageDto) {
+        const message = await this.prisma.message.create({
+            data: {
+                content: createMessageDto.content,
+                senderId: createMessageDto.sender,
+                room: createMessageDto.room,
+            },
+        });
+        return serializeMessage(message);
     }
 
     findAll() {
@@ -18,8 +23,12 @@ export class MessagesService {
         return;
     }
 
-    async findByRoom(roomId: string): Promise<Message[]> {
-        return this.messageModel.find({ room: roomId }).sort({ createdAt: 1 }).exec();
+    async findByRoom(roomId: string) {
+        const messages = await this.prisma.message.findMany({
+            where: { room: roomId },
+            orderBy: { createdAt: 'asc' },
+        });
+        return messages.map(serializeMessage);
     }
 
     remove(id: string) {

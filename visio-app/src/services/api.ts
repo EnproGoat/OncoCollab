@@ -36,6 +36,12 @@ export const api = {
         return response.json();
     },
 
+    getProfessions: async () => {
+        const response = await fetch(`${API_URL}/professions`);
+        if (!response.ok) throw new Error('Failed to fetch professions');
+        return response.json();
+    },
+
     getPatientRecords: async () => {
         const response = await fetch(`${API_URL}/patient-records`);
         if (!response.ok) throw new Error("Failed to fetch patient records");
@@ -189,6 +195,34 @@ export const api = {
         return response.json();
     },
 
+    getUsers: async () => {
+        const response = await fetch(`${API_URL}/users`);
+        if (!response.ok) throw new Error("Failed to fetch users");
+        return response.json();
+    },
+
+    getUser: async (id: string) => {
+        const response = await fetch(`${API_URL}/users/${id}`);
+        if (!response.ok) throw new Error("Failed to fetch user");
+        return response.json();
+    },
+
+    updateUser: async (id: string, data: any) => {
+        const response = await fetch(`${API_URL}/users/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) throw new Error("Failed to update user");
+        return response.json();
+    },
+
+    getMessages: async (roomId: string) => {
+        const response = await fetch(`${API_URL}/messages/room/${encodeURIComponent(roomId)}`);
+        if (!response.ok) throw new Error("Failed to fetch messages");
+        return response.json();
+    },
+
     addParticipantToMeeting: async (meetingId: string, participantId: string) => {
         const response = await fetch(`${API_URL}/meetings/${meetingId}/participants/${participantId}`, {
             method: "POST",
@@ -202,6 +236,45 @@ export const api = {
             method: "DELETE",
         });
         if (!response.ok) throw new Error("Failed to remove participant");
+        return response.json();
+    },
+
+    // Groups
+    getGroupsByUser: async (userId: string) => {
+        const response = await fetch(`${API_URL}/groups/user/${userId}`);
+        if (!response.ok) throw new Error("Failed to fetch groups");
+        return response.json();
+    },
+
+    getGroup: async (id: string) => {
+        const response = await fetch(`${API_URL}/groups/${id}`);
+        if (!response.ok) throw new Error("Failed to fetch group");
+        return response.json();
+    },
+
+    createGroup: async (data: { name: string; createdById: string; memberIds: string[] }) => {
+        const response = await fetch(`${API_URL}/groups`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) throw new Error("Failed to create group");
+        return response.json();
+    },
+
+    addGroupMember: async (groupId: string, userId: string) => {
+        const response = await fetch(`${API_URL}/groups/${groupId}/members/${userId}`, {
+            method: "POST",
+        });
+        if (!response.ok) throw new Error("Failed to add group member");
+        return response.json();
+    },
+
+    removeGroupMember: async (groupId: string, userId: string) => {
+        const response = await fetch(`${API_URL}/groups/${groupId}/members/${userId}`, {
+            method: "DELETE",
+        });
+        if (!response.ok) throw new Error("Failed to remove group member");
         return response.json();
     },
 };

@@ -3,12 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 
 interface Meeting {
-    _id: string;
+    id: string;
     roomId: string;
     subject: string;
     description?: string;
     time: string;
-    patient: any;
     participants: {
         user: any;
         profession: any;
@@ -21,8 +20,17 @@ interface Meeting {
     roomAdmin: any;
     status: string;
     scheduledDate: string;
-    duration: string;
+    duration: number;
 }
+
+const MANDATORY_FIELDS = ['firstName', 'lastName', 'profession'];
+const METADATA_FIELDS = ['id', 'createdAt', 'updatedAt'];
+
+const MANDATORY_LABELS: Record<string, string> = {
+    firstName: 'Prénom',
+    lastName: 'Nom',
+    profession: 'Profession',
+};
 
 const Meetings: React.FC = () => {
     const navigate = useNavigate();
@@ -35,7 +43,21 @@ const Meetings: React.FC = () => {
     const [editForm, setEditForm] = React.useState<Record<string, any>>({});
     const [newFieldName, setNewFieldName] = React.useState('');
     const [newFieldValue, setNewFieldValue] = React.useState('');
-    const [patientRecords, setPatientRecords] = React.useState<any[]>([]);
+    const [saveError, setSaveError] = React.useState('');
+
+    // Create meeting modal state
+    const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
+    const [createForm, setCreateForm] = React.useState({
+        subject: '',
+        description: '',
+        scheduledDate: '',
+        time: '',
+        duration: 30,
+    });
+    const [allUsers, setAllUsers] = React.useState<any[]>([]);
+    const [selectedParticipants, setSelectedParticipants] = React.useState<string[]>([]);
+    const [createError, setCreateError] = React.useState('');
+    const [createLoading, setCreateLoading] = React.useState(false);
 
     React.useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -47,35 +69,28 @@ const Meetings: React.FC = () => {
     }, [navigate]);
 
     React.useEffect(() => {
-        const fetchMeetings = async () => {
+        if (!user?.id) return;
+        const fetchData = async () => {
             try {
-                const data = await api.getMeetings();
-                setMeetings(data);
+                const [meetingsData, usersData] = await Promise.all([
+                    api.getMeetingsByParticipant(user.id),
+                    api.getUsers(),
+                ]);
+                setMeetings(meetingsData);
+                setAllUsers(usersData);
             } catch (error) {
-                console.error('Erreur chargement meetings:', error);
+                console.error('Erreur chargement:', error);
             } finally {
                 setLoading(false);
             }
         };
-        fetchMeetings();
-    }, []);
-
-    React.useEffect(() => {
-        const fetchPatientRecords = async () => {
-            try {
-                const data = await api.getPatientRecords();
-                setPatientRecords(data);
-            } catch (error) {
-                console.error('Erreur chargement patient records:', error);
-            }
-        };
-        fetchPatientRecords();
-    }, []);
+        fetchData();
+    }, [user]);
 
     const isCurrentUserFormFilled = (meeting: Meeting): boolean => {
-        if (!user?._id) return false;
+        if (!user?.id) return false;
         const participantInfo = meeting.participants.find(
-            p => p.user?._id === user._id
+            p => p.user?.id === user.id
         );
         return participantInfo?.formFilled || false;
     };
@@ -83,11 +98,16 @@ const Meetings: React.FC = () => {
     const handleOpenPatientModal = async (meeting: Meeting) => {
         setSelectedMeeting(meeting);
         setModalType('patient');
-        if (meeting.patient) {
-            setEditForm({ ...meeting.patient });
-        } else if (patientRecords.length > 0) {
-            setEditForm({ ...patientRecords[0] });
+        setSaveError('');
+        // Find the current user's participant entry and their own patientRecord
+        const myParticipant = meeting.participants.find(p => p.user?.id === user?.id);
+        const myRecord = myParticipant?.patientRecord;
+        // Pre-fill with user's OWN record if they already filled, otherwise empty
+        const base: Record<string, any> = myRecord ? { ...myRecord } : {};
+        for (const f of MANDATORY_FIELDS) {
+            if (!(f in base)) base[f] = '';
         }
+        setEditForm(base);
         setIsModalOpen(true);
     };
 
@@ -111,38 +131,86 @@ const Meetings: React.FC = () => {
     };
 
     const handleSaveForm = async () => {
-        if (!selectedMeeting || !user?._id) return;
+        if (!selectedMeeting || !user?.id) return;
+
+        // Validate mandatory fields
+        const missing = MANDATORY_FIELDS.filter(f => !editForm[f]?.toString().trim());
+        if (missing.length > 0) {
+            setSaveError(`Champs obligatoires manquants : ${missing.map(f => MANDATORY_LABELS[f] || f).join(', ')}`);
+            return;
+        }
+        setSaveError('');
+
+        // Strip metadata before sending
+        const payload: Record<string, any> = {};
+        for (const [k, v] of Object.entries(editForm)) {
+            if (!METADATA_FIELDS.includes(k)) payload[k] = v;
+        }
 
         try {
-            let patientRecordId = editForm._id;
+            let patientRecordId = editForm.id;
 
             if (!patientRecordId) {
-                const newRecord = await api.createPatientRecord(editForm);
-                patientRecordId = newRecord._id;
+                const newRecord = await api.createPatientRecord(payload);
+                patientRecordId = newRecord.id;
             } else {
-                await api.updatePatientRecord(patientRecordId, editForm);
+                await api.updatePatientRecord(patientRecordId, payload);
             }
 
-            await api.markFormFilled(selectedMeeting._id, user._id, patientRecordId);
+            await api.markFormFilled(selectedMeeting.id, user.id, patientRecordId);
 
-            const updatedMeetings = await api.getMeetings();
+            const updatedMeetings = await api.getMeetingsByParticipant(user.id);
             setMeetings(updatedMeetings);
 
             setIsModalOpen(false);
         } catch (error) {
             console.error('Erreur sauvegarde:', error);
+            setSaveError('Erreur lors de la sauvegarde');
         }
     };
 
-    const getPatientName = (meeting: Meeting): string => {
-        if (meeting.patient) {
-            return `${meeting.patient.firstName || ''} ${meeting.patient.lastName || ''}`.trim() || 'Patient';
-        }
-        return 'Patient non assigné';
-    };
-
-    const handleJoinMeeting = (meetingId: string, roomId: string) => {
+    const handleJoinMeeting = (meetingId: string, _roomId: string) => {
         navigate(`/meeting/${meetingId}/premeeting`);
+    };
+
+    const handleCreateMeeting = async () => {
+        if (!user?.id) return;
+        if (!createForm.subject || !createForm.scheduledDate || !createForm.time || !createForm.duration) {
+            setCreateError('Veuillez remplir tous les champs obligatoires');
+            return;
+        }
+        setCreateLoading(true);
+        setCreateError('');
+        try {
+            const participants = [
+                { user: user.id, profession: user.profession?.id || user.profession },
+                ...selectedParticipants
+                    .filter(id => id !== user.id)
+                    .map(id => {
+                        const u = allUsers.find(u => u.id === id);
+                        return { user: id, profession: u?.profession?.id || u?.profession };
+                    }),
+            ];
+            const meetingData = {
+                subject: createForm.subject,
+                description: createForm.description,
+                time: createForm.time,
+                participants,
+                roomAdmin: user.id,
+                scheduledDate: new Date(createForm.scheduledDate).toISOString(),
+                duration: createForm.duration,
+            };
+            await api.createMeeting(meetingData);
+            const updatedMeetings = await api.getMeetingsByParticipant(user.id);
+            setMeetings(updatedMeetings);
+            setIsCreateModalOpen(false);
+            setCreateForm({ subject: '', description: '', scheduledDate: '', time: '', duration: 30 });
+            setSelectedParticipants([]);
+        } catch (error: any) {
+            setCreateError(error.message || 'Erreur lors de la création');
+        } finally {
+            setCreateLoading(false);
+        }
     };
 
     return (
@@ -191,11 +259,7 @@ const Meetings: React.FC = () => {
                                     </div>
                                     <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
                                         <div className="text-slate-400 text-sm mb-1">Durée</div>
-                                        <div className="text-white font-semibold text-lg">{selectedMeeting.duration}</div>
-                                    </div>
-                                    <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                                        <div className="text-slate-400 text-sm mb-1">Patient</div>
-                                        <div className="text-white font-semibold text-lg">{getPatientName(selectedMeeting)}</div>
+                                        <div className="text-white font-semibold text-lg">{selectedMeeting.duration} min</div>
                                     </div>
                                     <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
                                         <div className="text-slate-400 text-sm mb-1">Participants</div>
@@ -212,34 +276,62 @@ const Meetings: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                                    {Object.entries(editForm)
-                                        .filter(([key]) => key !== '_id' && key !== '__v' && key !== 'createdAt' && key !== 'updatedAt')
-                                        .map(([key, value]) => (
-                                            <div key={key} className="flex gap-2 items-start">
-                                                <div className="flex-1">
-                                                    <label className="block text-sm font-medium text-slate-300 mb-2 capitalize">
-                                                        {key.replace(/([A-Z])/g, ' $1').trim()}
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        value={value as string}
-                                                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
-                                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
-                                                        placeholder={`Entrez ${key}`}
-                                                    />
-                                                </div>
-                                                <button
-                                                    onClick={() => handleDeleteField(key)}
-                                                    className="mt-8 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                    title="Supprimer ce champ"
-                                                >
-                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                    </svg>
-                                                </button>
+                                    {/* Mandatory fields */}
+                                    <div className="space-y-3">
+                                        <h3 className="text-xs font-semibold text-teal-400 uppercase tracking-wider">Champs obligatoires</h3>
+                                        {MANDATORY_FIELDS.map((key) => (
+                                            <div key={key}>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                                    {MANDATORY_LABELS[key] || key} <span className="text-rose-400">*</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={(editForm[key] as string) || ''}
+                                                    onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                    placeholder={`Entrez ${MANDATORY_LABELS[key] || key}`}
+                                                />
                                             </div>
                                         ))}
+                                    </div>
 
+                                    {/* Custom fields */}
+                                    {Object.entries(editForm)
+                                        .filter(([key]) => !MANDATORY_FIELDS.includes(key) && !METADATA_FIELDS.includes(key))
+                                        .length > 0 && (
+                                        <div className="border-t border-slate-700 pt-4 space-y-3">
+                                            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Champs personnalisés</h3>
+                                            {Object.entries(editForm)
+                                                .filter(([key]) => !MANDATORY_FIELDS.includes(key) && !METADATA_FIELDS.includes(key))
+                                                .map(([key, value]) => (
+                                                <div key={key} className="flex gap-2 items-start">
+                                                    <div className="flex-1">
+                                                        <label className="block text-sm font-medium text-slate-300 mb-2 capitalize">
+                                                            {key.replace(/([A-Z])/g, ' $1').trim()}
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={(value as string) || ''}
+                                                            onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                            placeholder={`Entrez ${key}`}
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleDeleteField(key)}
+                                                        className="mt-8 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                        title="Supprimer ce champ"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Add new custom field */}
                                     <div className="border-t border-slate-700 pt-4 mt-6">
                                         <h3 className="text-sm font-semibold text-teal-400 mb-3 flex items-center gap-2">
                                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -273,6 +365,13 @@ const Meetings: React.FC = () => {
                                             </button>
                                         </div>
                                     </div>
+
+                                    {/* Save error */}
+                                    {saveError && (
+                                        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                                            <p className="text-red-400 text-sm">{saveError}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -300,6 +399,174 @@ const Meetings: React.FC = () => {
                 </div>
             )}
 
+            {isCreateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                    <div className="bg-slate-900 rounded-xl border border-slate-700 shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <svg className="w-5 h-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                Nouvelle réunion
+                            </h2>
+                            <button
+                                onClick={() => setIsCreateModalOpen(false)}
+                                className="text-slate-400 hover:text-white transition-colors"
+                            >
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-5">
+                            {/* Meeting fields */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                    Sujet <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={createForm.subject}
+                                    onChange={(e) => setCreateForm({ ...createForm, subject: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                    placeholder="Sujet de la réunion"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                    Description
+                                </label>
+                                <textarea
+                                    value={createForm.description}
+                                    onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                                    rows={3}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors resize-none"
+                                    placeholder="Description (optionnelle)"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Date <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={createForm.scheduledDate}
+                                        onChange={(e) => setCreateForm({ ...createForm, scheduledDate: e.target.value })}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Heure <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={createForm.time}
+                                        onChange={(e) => setCreateForm({ ...createForm, time: e.target.value })}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Durée (min) <span className="text-red-400">*</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={5}
+                                        step={5}
+                                        value={createForm.duration}
+                                        onChange={(e) => setCreateForm({ ...createForm, duration: parseInt(e.target.value) || 0 })}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                        placeholder="30"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Participants section */}
+                            <div className="border-t border-slate-700 pt-5">
+                                <h3 className="text-sm font-semibold text-teal-400 mb-4 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    Participants
+                                </h3>
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    {allUsers
+                                        .filter(u => u.id !== user?.id)
+                                        .map(u => (
+                                            <label key={u.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedParticipants.includes(u.id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedParticipants([...selectedParticipants, u.id]);
+                                                        } else {
+                                                            setSelectedParticipants(selectedParticipants.filter(id => id !== u.id));
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
+                                                />
+                                                <span className="text-white text-sm">
+                                                    {u.firstName} {u.lastName}
+                                                </span>
+                                                {u.profession?.name && (
+                                                    <span className="text-xs text-slate-400">({u.profession.name})</span>
+                                                )}
+                                            </label>
+                                        ))}
+                                    {allUsers.filter(u => u.id !== user?.id).length === 0 && (
+                                        <p className="text-slate-500 text-sm">Aucun autre utilisateur disponible</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Error display */}
+                            {createError && (
+                                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+                                    {createError}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-800 bg-slate-900/50">
+                            <button
+                                onClick={() => setIsCreateModalOpen(false)}
+                                className="px-5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleCreateMeeting}
+                                disabled={createLoading}
+                                className="px-5 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium transition-colors flex items-center gap-2"
+                            >
+                                {createLoading ? (
+                                    <>
+                                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                        </svg>
+                                        Création...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Créer la réunion
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="max-w-5xl mx-auto">
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
@@ -316,6 +583,15 @@ const Meetings: React.FC = () => {
                             Réunions
                         </h2>
                     </div>
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium transition-all flex items-center gap-2"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Nouvelle réunion
+                    </button>
                 </div>
 
                 <div className="grid gap-6">
@@ -326,7 +602,7 @@ const Meetings: React.FC = () => {
                     ) : (
                         meetings.map((meeting) => (
                             <div
-                                key={meeting._id}
+                                key={meeting.id}
                                 className="group bg-slate-900 border border-slate-800 rounded-xl p-6 hover:border-teal-500/50 transition-all duration-300 shadow-lg hover:shadow-teal-500/10"
                             >
                                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -336,7 +612,7 @@ const Meetings: React.FC = () => {
                                                 {meeting.time}
                                             </span>
                                             <h3 className="text-xl font-semibold text-white group-hover:text-teal-400 transition-colors">
-                                                {getPatientName(meeting)}
+                                                {meeting.subject}
                                             </h3>
                                         </div>
                                         <p className="text-slate-400 text-sm flex items-center gap-2">
@@ -370,7 +646,7 @@ const Meetings: React.FC = () => {
                                         )}
 
                                         <button
-                                            onClick={() => handleJoinMeeting(meeting._id, meeting.roomId)}
+                                            onClick={() => handleJoinMeeting(meeting.id, meeting.roomId)}
                                             className="px-6 py-2 bg-teal-600 hover:bg-teal-500 text-white font-medium rounded-lg shadow-lg shadow-teal-900/20 hover:shadow-teal-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
                                         >
                                             Rejoindre

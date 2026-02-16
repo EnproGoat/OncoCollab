@@ -60,11 +60,6 @@ export class MeetingsController {
         return this.meetingsService.markFormFilled(id, markFormFilledDto);
     }
 
-    @Get(':id/patient')
-    getPatient(@Param('id') id: string) {
-        return this.meetingsService.getPatientForMeeting(id);
-    }
-
     @Get(':id/participants-status')
     getParticipantsStatus(@Param('id') id: string) {
         return this.meetingsService.getParticipantsStatus(id);

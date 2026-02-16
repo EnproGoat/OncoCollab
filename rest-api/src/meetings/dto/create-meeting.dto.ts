@@ -1,12 +1,12 @@
-import { IsString, IsNotEmpty, IsArray, IsMongoId, IsOptional, IsDateString, ValidateNested, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsOptional, IsDateString, ValidateNested, IsBoolean, IsInt, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class ParticipantDto {
-    @IsMongoId()
+    @IsString()
     @IsNotEmpty()
     user: string;
 
-    @IsMongoId()
+    @IsString()
     @IsNotEmpty()
     profession: string;
 
@@ -30,18 +30,15 @@ export class CreateMeetingDto {
 
     @IsString()
     @IsNotEmpty()
+    @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'time must be in HH:mm format' })
     time: string;
-
-    @IsMongoId()
-    @IsNotEmpty()
-    patient: string;
 
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => ParticipantDto)
     participants: ParticipantDto[];
 
-    @IsMongoId()
+    @IsString()
     @IsNotEmpty()
     roomAdmin: string;
 
@@ -49,7 +46,8 @@ export class CreateMeetingDto {
     @IsNotEmpty()
     scheduledDate: string;
 
-    @IsString()
+    @IsInt({ message: 'duration must be an integer (in minutes)' })
     @IsNotEmpty()
-    duration: string;
+    @Type(() => Number)
+    duration: number;
 }

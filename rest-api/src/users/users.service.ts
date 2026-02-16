@@ -1,38 +1,69 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { User } from './schemas/user.schema';
-import * as argon2 from "argon2";
+import { PrismaService } from '../prisma/prisma.service';
+import * as argon2 from 'argon2';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { serializeUser } from '../common/serializers/serializers';
 
 @Injectable()
 export class UsersService {
-    constructor(@InjectModel(User.name) private userModel: Model<User>) { }
+    constructor(private prisma: PrismaService) {}
 
     async create(createUserDto: CreateUserDto) {
         createUserDto.password = await argon2.hash(createUserDto.password);
-        const createdUser = new this.userModel(createUserDto)
-        return createdUser.save();
+        const user = await this.prisma.user.create({
+            data: {
+                email: createUserDto.email,
+                firstName: createUserDto.firstName,
+                lastName: createUserDto.lastName,
+                professionId: createUserDto.profession,
+                isAdmin: createUserDto.isAdmin ?? false,
+                password: createUserDto.password,
+            },
+            include: { profession: true },
+        });
+        return serializeUser(user);
     }
 
-    findAll() {
-        return this.userModel.find().populate('profession').exec();
+    async findAll() {
+        const users = await this.prisma.user.findMany({
+            include: { profession: true },
+        });
+        return users.map(serializeUser);
     }
 
-    findOne(id: string) {
-        return this.userModel.findById(id).populate('profession').exec();
+    async findOne(id: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id },
+            include: { profession: true },
+        });
+        return serializeUser(user);
     }
 
-    findByEmail(email: string) {
-        return this.userModel.findOne({ email }).populate('profession').exec();
+    async findByEmail(email: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { email },
+            include: { profession: true },
+        });
+        return serializeUser(user);
     }
 
-    update(id: string, updateUserDto: UpdateUserDto) {
-        return this.userModel.findByIdAndUpdate(id, updateUserDto, { new: true }).populate('profession').exec();
+    async update(id: string, updateUserDto: UpdateUserDto) {
+        const user = await this.prisma.user.update({
+            where: { id },
+            data: {
+                ...(updateUserDto.email && { email: updateUserDto.email }),
+                ...(updateUserDto.firstName && { firstName: updateUserDto.firstName }),
+                ...(updateUserDto.lastName && { lastName: updateUserDto.lastName }),
+                ...(updateUserDto.profession && { professionId: updateUserDto.profession }),
+                ...(updateUserDto.isAdmin !== undefined && { isAdmin: updateUserDto.isAdmin }),
+            },
+            include: { profession: true },
+        });
+        return serializeUser(user);
     }
 
-    remove(id: string) {
-        return this.userModel.findByIdAndDelete(id).exec();
+    async remove(id: string) {
+        return this.prisma.user.delete({ where: { id } });
     }
 }

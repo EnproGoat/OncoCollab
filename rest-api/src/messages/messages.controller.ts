@@ -1,6 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { MessagesService } from '../messages/messages.service';
-import { ObjectId, Types } from 'mongoose';
 
 @Controller('messages')
 export class MessagesController {

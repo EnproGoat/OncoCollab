@@ -8,9 +8,9 @@ const Register: React.FC = () => {
         email: '',
         password: '',
         confirmPassword: '',
-        fistName: '',
+        firstName: '',
         lastName: '',
-        job: ''
+        profession: ''
     });
     const [error, setError] = React.useState('');
     const [loading, setLoading] = React.useState(false);
@@ -41,20 +41,26 @@ const Register: React.FC = () => {
         }
     };
 
-    const jobs = [
-        'Oncologue',
-        'Chirurgien',
-        'Radiologue',
-        'Anatomo-pathologiste',
-        'Infirmier(e)',
-        'Autre'
-    ];
+    const [jobs, setJobs] = React.useState<Array<{id: string; name: string}>>([]);
+
+    React.useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const profs = await api.getProfessions();
+                if (mounted && Array.isArray(profs)) setJobs(profs);
+            } catch (e) {
+                // ignore; professions list will be empty
+            }
+        })();
+        return () => { mounted = false };
+    }, []);
 
     return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-white mb-2">OncoCollab</h1>
+                    <h1 className="text-3xl font-bold text-white mb-2">Nexus Care</h1>
                     <p className="text-slate-400">Créez votre compte</p>
                 </div>
 
@@ -71,8 +77,8 @@ const Register: React.FC = () => {
                                 <label className="block text-sm font-medium text-slate-300 mb-2">Prénom</label>
                                 <input
                                     type="text"
-                                    name="fistName"
-                                    value={formData.fistName}
+                                    name="firstName"
+                                    value={formData.firstName}
                                     onChange={handleChange}
                                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
                                     required
@@ -94,15 +100,15 @@ const Register: React.FC = () => {
                         <div>
                             <label className="block text-sm font-medium text-slate-300 mb-2">Profession</label>
                             <select
-                                name="job"
-                                value={formData.job}
+                                name="profession"
+                                value={formData.profession}
                                 onChange={handleChange}
                                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
                                 required
                             >
                                 <option value="">Sélectionnez...</option>
                                 {jobs.map((job) => (
-                                    <option key={job} value={job}>{job}</option>
+                                    <option key={job.id} value={job.id}>{job.name}</option>
                                 ))}
                             </select>
                         </div>

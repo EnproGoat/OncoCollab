@@ -6,3 +6,5 @@ export { default as Chat } from './Chat';
 export { default as WSIAnalysis } from './WSIAnalysis';
 export { default as PreMeeting } from './PreMeeting';
 export { default as MeetingCall } from './MeetingCall';
+export { default as ReportGenerator } from './ReportGenerator';
+export { default as Profile } from './Profile';

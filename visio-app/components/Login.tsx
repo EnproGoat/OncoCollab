@@ -18,7 +18,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onNavigateToRegister }) => {
         setLoading(true);
         try {
             const data = await api.login(email, password);
-            if (data && (data.email || data._id)) {
+            if (data && (data.email || data.id)) {
                 localStorage.setItem('user', JSON.stringify(data));
             }
             onLogin();

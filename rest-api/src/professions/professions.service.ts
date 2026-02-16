@@ -1,54 +1,67 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Profession, ProfessionDocument } from './schemas/profession.schema';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateProfessionDto } from './dto/create-profession.dto';
 import { UpdateProfessionDto } from './dto/update-profession.dto';
+import { serializeProfession } from '../common/serializers/serializers';
 
 @Injectable()
 export class ProfessionsService {
-    constructor(
-        @InjectModel(Profession.name) private professionModel: Model<ProfessionDocument>,
-    ) {}
+    constructor(private prisma: PrismaService) {}
 
-    async create(createProfessionDto: CreateProfessionDto): Promise<Profession> {
-        const existing = await this.professionModel.findOne({ name: createProfessionDto.name });
+    async create(createProfessionDto: CreateProfessionDto) {
+        const existing = await this.prisma.profession.findUnique({
+            where: { name: createProfessionDto.name },
+        });
         if (existing) {
             throw new ConflictException('Cette profession existe déjà');
         }
-        const profession = new this.professionModel(createProfessionDto);
-        return profession.save();
+        const profession = await this.prisma.profession.create({
+            data: createProfessionDto,
+        });
+        return serializeProfession(profession);
     }
 
-    async findAll(): Promise<Profession[]> {
-        return this.professionModel.find().sort({ name: 1 }).exec();
+    async findAll() {
+        const professions = await this.prisma.profession.findMany({
+            orderBy: { name: 'asc' },
+        });
+        return professions.map(serializeProfession);
     }
 
-    async findActive(): Promise<Profession[]> {
-        return this.professionModel.find({ isActive: true }).sort({ name: 1 }).exec();
+    async findActive() {
+        const professions = await this.prisma.profession.findMany({
+            where: { isActive: true },
+            orderBy: { name: 'asc' },
+        });
+        return professions.map(serializeProfession);
     }
 
-    async findOne(id: string): Promise<Profession> {
-        const profession = await this.professionModel.findById(id).exec();
+    async findOne(id: string) {
+        const profession = await this.prisma.profession.findUnique({
+            where: { id },
+        });
         if (!profession) {
             throw new NotFoundException('Profession non trouvée');
         }
-        return profession;
+        return serializeProfession(profession);
     }
 
-    async update(id: string, updateProfessionDto: UpdateProfessionDto): Promise<Profession> {
-        const profession = await this.professionModel
-            .findByIdAndUpdate(id, updateProfessionDto, { new: true })
-            .exec();
-        if (!profession) {
+    async update(id: string, updateProfessionDto: UpdateProfessionDto) {
+        try {
+            const profession = await this.prisma.profession.update({
+                where: { id },
+                data: updateProfessionDto,
+            });
+            return serializeProfession(profession);
+        } catch {
             throw new NotFoundException('Profession non trouvée');
         }
-        return profession;
     }
 
     async remove(id: string): Promise<void> {
-        const result = await this.professionModel.findByIdAndDelete(id).exec();
-        if (!result) {
+        try {
+            await this.prisma.profession.delete({ where: { id } });
+        } catch {
             throw new NotFoundException('Profession non trouvée');
         }
     }
@@ -66,10 +79,11 @@ export class ProfessionsService {
         ];
 
         for (const profession of professions) {
-            const exists = await this.professionModel.findOne({ name: profession.name });
-            if (!exists) {
-                await this.professionModel.create(profession);
-            }
+            await this.prisma.profession.upsert({
+                where: { name: profession.name },
+                update: {},
+                create: profession,
+            });
         }
     }
 }

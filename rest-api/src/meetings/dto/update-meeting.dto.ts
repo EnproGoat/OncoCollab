@@ -1,12 +1,12 @@
-import { IsString, IsArray, IsMongoId, IsOptional, IsDateString, IsEnum, ValidateNested, IsBoolean, IsNotEmpty } from 'class-validator';
+import { IsString, IsArray, IsOptional, IsDateString, IsEnum, ValidateNested, IsBoolean, IsNotEmpty, IsInt, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class UpdateParticipantDto {
-    @IsMongoId()
+    @IsString()
     @IsNotEmpty()
     user: string;
 
-    @IsMongoId()
+    @IsString()
     @IsOptional()
     profession?: string;
 
@@ -34,11 +34,8 @@ export class UpdateMeetingDto {
 
     @IsString()
     @IsOptional()
+    @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'time must be in HH:mm format' })
     time?: string;
-
-    @IsMongoId()
-    @IsOptional()
-    patient?: string;
 
     @IsArray()
     @ValidateNested({ each: true })
@@ -46,7 +43,7 @@ export class UpdateMeetingDto {
     @IsOptional()
     participants?: UpdateParticipantDto[];
 
-    @IsMongoId()
+    @IsString()
     @IsOptional()
     roomAdmin?: string;
 
@@ -62,7 +59,8 @@ export class UpdateMeetingDto {
     @IsOptional()
     startedAt?: string;
 
-    @IsString()
+    @IsInt({ message: 'duration must be an integer (in minutes)' })
     @IsOptional()
-    duration?: string;
+    @Type(() => Number)
+    duration?: number;
 }

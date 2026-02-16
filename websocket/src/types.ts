@@ -24,6 +24,9 @@ export interface ServerToClientEvents {
 
   // Historique des messages
   "message-history": (messages: any[]) => void;
+
+  // Diffuse le nom d'un participant à tous les autres
+  "participant-announced-name": (socketId: string, name: string) => void;
 }
 
 // Événements que le Client envoie au Serveur
@@ -42,4 +45,10 @@ export interface ClientToServerEvents {
 
   // Envoi d'un message du chat
   "send-chat-message": (content: string, roomId: string, senderId: string) => void;
+
+  // Annonce le nom de l'utilisateur à la room
+  "announce-name": (name: string, roomId: string) => void;
+
+  // Quitte une room explicitement
+  "leave-room": (roomId: string) => void;
 }

@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { MessagesModule } from './messages/messages.module';
 import { AuthModule } from './auth/auth.module';
@@ -10,6 +10,9 @@ import { PatientRecordsModule } from './patient-records/patient-records.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { ProfessionsModule } from './professions/professions.module';
 import { SeedModule } from './seed/seed.module';
+import { EventsModule } from './events/events.module';
+import { AiModule } from './ai/ai.module';
+import { GroupsModule } from './groups/groups.module';
 
 @Module({
   imports: [
@@ -17,13 +20,7 @@ import { SeedModule } from './seed/seed.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>('MONGO_URI'),
-      }),
-      inject: [ConfigService],
-    }),
+    PrismaModule,
     UsersModule,
     MessagesModule,
     AuthModule,
@@ -31,8 +28,11 @@ import { SeedModule } from './seed/seed.module';
     MeetingsModule,
     ProfessionsModule,
     SeedModule,
+    EventsModule,
+    AiModule,
+    GroupsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

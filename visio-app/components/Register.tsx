@@ -57,7 +57,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onNavigateToLogin }) =>
                         </svg>
                     </div>
                     <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Créer un compte</h1>
-                    <p className="text-slate-400">Rejoignez OncoCollab aujourd'hui</p>
+                    <p className="text-slate-400">Rejoignez Nexus Care aujourd'hui</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">

@@ -2,7 +2,7 @@ import React from 'react';
 import { api } from '../src/services/api';
 
 interface Meeting {
-    _id: string;
+    id: string;
     roomId: string;
     subject: string;
     description?: string;
@@ -24,6 +24,15 @@ interface DashboardProps {
     onJoinMeeting: (meetingId: string, roomId: string) => void;
 }
 
+const MANDATORY_FIELDS = ['firstName', 'lastName', 'profession'];
+const METADATA_FIELDS = ['id', 'createdAt', 'updatedAt'];
+
+const MANDATORY_LABELS: Record<string, string> = {
+    firstName: 'Prénom',
+    lastName: 'Nom',
+    profession: 'Profession',
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
     const [user, setUser] = React.useState<any>(null);
     const [meetings, setMeetings] = React.useState<Meeting[]>([]);
@@ -34,7 +43,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
     const [editForm, setEditForm] = React.useState<Record<string, any>>({});
     const [newFieldName, setNewFieldName] = React.useState('');
     const [newFieldValue, setNewFieldValue] = React.useState('');
-    const [patientRecords, setPatientRecords] = React.useState<any[]>([]);
+    const [saveError, setSaveError] = React.useState('');
 
     React.useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -44,9 +53,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
     }, []);
 
     React.useEffect(() => {
+        if (!user?.id) return;
         const fetchMeetings = async () => {
             try {
-                const data = await api.getMeetings();
+                const data = await api.getMeetingsByParticipant(user.id);
                 setMeetings(data);
             } catch (error) {
                 console.error('Erreur chargement meetings:', error);
@@ -55,19 +65,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
             }
         };
         fetchMeetings();
-    }, []);
+    }, [user]);
 
-    React.useEffect(() => {
-        const fetchPatientRecords = async () => {
-            try {
-                const data = await api.getPatientRecords();
-                setPatientRecords(data);
-            } catch (error) {
-                console.error('Erreur chargement patient records:', error);
-            }
-        };
-        fetchPatientRecords();
-    }, []);
 
     const displayUser = user || {
         fistName: "FIRSTNAME NOT FOUND",
@@ -76,9 +75,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
     };
 
     const isCurrentUserFormFilled = (meeting: Meeting): boolean => {
-        if (!user?._id) return false;
+        if (!user?.id) return false;
         const participantInfo = meeting.participants.find(
-            p => p.participant?._id === user._id
+            p => p.participant?.id === user.id
         );
         return participantInfo?.formFilled || false;
     };
@@ -86,11 +85,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
     const handleOpenPatientModal = async (meeting: Meeting) => {
         setSelectedMeeting(meeting);
         setModalType('patient');
-        if (meeting.patient) {
-            setEditForm({ ...meeting.patient });
-        } else if (patientRecords.length > 0) {
-            setEditForm({ ...patientRecords[0] });
+        setSaveError('');
+        // Find the current user's participant entry and their own patientRecord
+        const myParticipant = meeting.participants.find(p => p.participant?.id === user?.id);
+        const myRecord = myParticipant?.patientRecord;
+        // Pre-fill with user's OWN record if they already filled, otherwise empty
+        const base: Record<string, any> = myRecord ? { ...myRecord } : {};
+        for (const f of MANDATORY_FIELDS) {
+            if (!(f in base)) base[f] = '';
         }
+        setEditForm(base);
         setIsModalOpen(true);
     };
 
@@ -114,26 +118,41 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
     };
 
     const handleSaveForm = async () => {
-        if (!selectedMeeting || !user?._id) return;
-        
+        if (!selectedMeeting || !user?.id) return;
+
+        // Validate mandatory fields
+        const missing = MANDATORY_FIELDS.filter(f => !editForm[f]?.toString().trim());
+        if (missing.length > 0) {
+            setSaveError(`Champs obligatoires manquants : ${missing.map(f => MANDATORY_LABELS[f] || f).join(', ')}`);
+            return;
+        }
+        setSaveError('');
+
+        // Strip metadata before sending
+        const payload: Record<string, any> = {};
+        for (const [k, v] of Object.entries(editForm)) {
+            if (!METADATA_FIELDS.includes(k)) payload[k] = v;
+        }
+
         try {
-            let patientRecordId = editForm._id;
-            
+            let patientRecordId = editForm.id;
+
             if (!patientRecordId) {
-                const newRecord = await api.createPatientRecord(editForm);
-                patientRecordId = newRecord._id;
+                const newRecord = await api.createPatientRecord(payload);
+                patientRecordId = newRecord.id;
             } else {
-                await api.updatePatientRecord(patientRecordId, editForm);
+                await api.updatePatientRecord(patientRecordId, payload);
             }
-            
-            await api.markFormFilled(selectedMeeting._id, user._id, patientRecordId);
-            
-            const updatedMeetings = await api.getMeetings();
+
+            await api.markFormFilled(selectedMeeting.id, user.id, patientRecordId);
+
+            const updatedMeetings = await api.getMeetingsByParticipant(user.id);
             setMeetings(updatedMeetings);
-            
+
             setIsModalOpen(false);
         } catch (error) {
             console.error('Erreur sauvegarde:', error);
+            setSaveError('Erreur lors de la sauvegarde');
         }
     };
 
@@ -222,35 +241,62 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
                                 </div>
                             ) : (
                                 <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                                    {Object.entries(editForm)
-                                        .filter(([key]) => key !== 'id')
-                                        .map(([key, value]) => (
-                                        <div key={key} className="flex gap-2 items-start">
-                                            <div className="flex-1">
-                                                <label className="block text-sm font-medium text-slate-300 mb-2 capitalize">
-                                                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                                    {/* Mandatory fields */}
+                                    <div className="space-y-3">
+                                        <h3 className="text-xs font-semibold text-teal-400 uppercase tracking-wider">Champs obligatoires</h3>
+                                        {MANDATORY_FIELDS.map((key) => (
+                                            <div key={key}>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                                    {MANDATORY_LABELS[key] || key} <span className="text-rose-400">*</span>
                                                 </label>
                                                 <input
                                                     type="text"
-                                                    value={value as string}
+                                                    value={(editForm[key] as string) || ''}
                                                     onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
                                                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
-                                                    placeholder={`Entrez ${key}`}
+                                                    placeholder={`Entrez ${MANDATORY_LABELS[key] || key}`}
                                                 />
                                             </div>
-                                            <button
-                                                onClick={() => handleDeleteField(key)}
-                                                className="mt-8 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                title="Supprimer ce champ"
-                                            >
-                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
 
-                                    {/* Ajouter un nouveau champ */}
+                                    {/* Custom fields */}
+                                    {Object.entries(editForm)
+                                        .filter(([key]) => !MANDATORY_FIELDS.includes(key) && !METADATA_FIELDS.includes(key))
+                                        .length > 0 && (
+                                        <div className="border-t border-slate-700 pt-4 space-y-3">
+                                            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Champs personnalisés</h3>
+                                            {Object.entries(editForm)
+                                                .filter(([key]) => !MANDATORY_FIELDS.includes(key) && !METADATA_FIELDS.includes(key))
+                                                .map(([key, value]) => (
+                                                <div key={key} className="flex gap-2 items-start">
+                                                    <div className="flex-1">
+                                                        <label className="block text-sm font-medium text-slate-300 mb-2 capitalize">
+                                                            {key.replace(/([A-Z])/g, ' $1').trim()}
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={(value as string) || ''}
+                                                            onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                            placeholder={`Entrez ${key}`}
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleDeleteField(key)}
+                                                        className="mt-8 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                        title="Supprimer ce champ"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Add new custom field */}
                                     <div className="border-t border-slate-700 pt-4 mt-6">
                                         <h3 className="text-sm font-semibold text-teal-400 mb-3 flex items-center gap-2">
                                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -284,6 +330,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
                                             </button>
                                         </div>
                                     </div>
+
+                                    {/* Save error */}
+                                    {saveError && (
+                                        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                                            <p className="text-red-400 text-sm">{saveError}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -338,7 +391,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
                     ) : (
                         meetings.map((meeting) => (
                             <div
-                                key={meeting._id}
+                                key={meeting.id}
                                 className="group bg-slate-900 border border-slate-800 rounded-xl p-6 hover:border-teal-500/50 transition-all duration-300 shadow-lg hover:shadow-teal-500/10"
                             >
                                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -382,7 +435,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onJoinMeeting }) => {
                                         )}
 
                                         <button
-                                            onClick={() => onJoinMeeting(meeting._id, meeting.roomId)}
+                                            onClick={() => onJoinMeeting(meeting.id, meeting.roomId)}
                                             className="px-6 py-2 bg-teal-600 hover:bg-teal-500 text-white font-medium rounded-lg shadow-lg shadow-teal-900/20 hover:shadow-teal-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
                                         >
                                             Rejoindre

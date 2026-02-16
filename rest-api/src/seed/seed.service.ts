@@ -1,20 +1,10 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { User, UserDocument } from '../users/schemas/user.schema';
-import { Profession, ProfessionDocument } from '../professions/schemas/profession.schema';
-import { Meeting, MeetingDocument } from '../meetings/schemas/meeting.schema';
-import { PatientRecord } from '../patient-records/schemas/patient-record.schema';
+import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class SeedService implements OnModuleInit {
-    constructor(
-        @InjectModel(User.name) private userModel: Model<UserDocument>,
-        @InjectModel(Profession.name) private professionModel: Model<ProfessionDocument>,
-        @InjectModel(Meeting.name) private meetingModel: Model<MeetingDocument>,
-        @InjectModel(PatientRecord.name) private patientRecordModel: Model<PatientRecord>,
-    ) {}
+    constructor(private prisma: PrismaService) {}
 
     async onModuleInit() {
         console.log('🌱 Vérification des données de démo...');
@@ -38,189 +28,181 @@ export class SeedService implements OnModuleInit {
         ];
 
         for (const profession of professions) {
-            const exists = await this.professionModel.findOne({ name: profession.name });
-            if (!exists) {
-                await this.professionModel.create(profession);
-                console.log(`  ➕ Profession créée: ${profession.name}`);
-            }
+            await this.prisma.profession.upsert({
+                where: { name: profession.name },
+                update: {},
+                create: profession,
+            });
         }
     }
 
     private async seedUsers() {
-        const oncologueProfession = await this.professionModel.findOne({ name: 'Oncologue' });
-        const chirurgienProfession = await this.professionModel.findOne({ name: 'Chirurgien' });
-        const radiologueProfession = await this.professionModel.findOne({ name: 'Radiologue' });
-        const anatomoPathProfession = await this.professionModel.findOne({ name: 'Anatomopathologiste' });
-        const infirmierProfession = await this.professionModel.findOne({ name: 'Infirmier(ère)' });
-
-        // Mettre à jour l'utilisateur cedric@gmail.com s'il existe avec l'ancien schéma
-        const cedric = await this.userModel.findOne({ email: 'cedric@gmail.com' });
-        if (cedric && !cedric.profession) {
-            await this.userModel.updateOne(
-                { email: 'cedric@gmail.com' },
-                { 
-                    $set: { 
-                        firstName: 'Cédric',
-                        profession: oncologueProfession._id 
-                    },
-                    $unset: { fistName: 1, job: 1 }
-                }
-            );
-            console.log('  🔄 Utilisateur cedric@gmail.com mis à jour');
-        }
+        const chirurgien = await this.prisma.profession.findUnique({ where: { name: 'Chirurgien' } });
+        const radiologue = await this.prisma.profession.findUnique({ where: { name: 'Radiologue' } });
+        const anatomoPath = await this.prisma.profession.findUnique({ where: { name: 'Anatomopathologiste' } });
+        const infirmier = await this.prisma.profession.findUnique({ where: { name: 'Infirmier(ère)' } });
+        const oncologue = await this.prisma.profession.findUnique({ where: { name: 'Oncologue' } });
 
         const users = [
             {
                 email: 'sophie.martin@oncocollab.fr',
                 firstName: 'Sophie',
                 lastName: 'Martin',
-                profession: chirurgienProfession._id,
+                professionId: chirurgien!.id,
                 password: await argon2.hash('password123'),
-                isAdmin: false
+                isAdmin: false,
             },
             {
                 email: 'jean.dupont@oncocollab.fr',
                 firstName: 'Jean',
                 lastName: 'Dupont',
-                profession: radiologueProfession._id,
+                professionId: radiologue!.id,
                 password: await argon2.hash('password123'),
-                isAdmin: false
+                isAdmin: false,
             },
             {
                 email: 'marie.lefevre@oncocollab.fr',
                 firstName: 'Marie',
                 lastName: 'Lefèvre',
-                profession: anatomoPathProfession._id,
+                professionId: anatomoPath!.id,
                 password: await argon2.hash('password123'),
-                isAdmin: false
+                isAdmin: false,
             },
             {
                 email: 'paul.bernard@oncocollab.fr',
                 firstName: 'Paul',
                 lastName: 'Bernard',
-                profession: infirmierProfession._id,
+                professionId: infirmier!.id,
                 password: await argon2.hash('password123'),
-                isAdmin: false
+                isAdmin: false,
             },
             {
                 email: 'admin@oncocollab.fr',
                 firstName: 'Admin',
                 lastName: 'System',
-                profession: oncologueProfession._id,
+                professionId: oncologue!.id,
                 password: await argon2.hash('admin123'),
-                isAdmin: true
-            }
+                isAdmin: true,
+            },
         ];
 
         for (const user of users) {
-            const exists = await this.userModel.findOne({ email: user.email });
+            const exists = await this.prisma.user.findUnique({ where: { email: user.email } });
             if (!exists) {
-                await this.userModel.create(user);
+                await this.prisma.user.create({ data: user });
                 console.log(`  ➕ Utilisateur créé: ${user.email}`);
             }
         }
     }
 
     private async seedPatientRecords() {
+        const count = await this.prisma.patientRecord.count();
+        if (count > 0) return;
+
         const patients = [
             {
-                firstName: 'Michel',
-                lastName: 'Dubois',
                 profession: 'Patient',
-                dateOfBirth: '1958-03-15',
-                gender: 'M',
-                diagnosis: 'Cancer du poumon - Stade IIA',
-                notes: 'Patient suivi depuis janvier 2026'
+                data: {
+                    firstName: 'Michel',
+                    lastName: 'Dubois',
+                    dateOfBirth: '1958-03-15',
+                    gender: 'M',
+                    diagnosis: 'Cancer du poumon - Stade IIA',
+                    notes: 'Patient suivi depuis janvier 2026',
+                },
             },
             {
-                firstName: 'Françoise',
-                lastName: 'Lambert',
                 profession: 'Patient',
-                dateOfBirth: '1965-07-22',
-                gender: 'F',
-                diagnosis: 'Cancer du sein - Triple négatif',
-                notes: 'Chimiothérapie néoadjuvante en cours'
+                data: {
+                    firstName: 'Françoise',
+                    lastName: 'Lambert',
+                    dateOfBirth: '1965-07-22',
+                    gender: 'F',
+                    diagnosis: 'Cancer du sein - Triple négatif',
+                    notes: 'Chimiothérapie néoadjuvante en cours',
+                },
             },
             {
-                firstName: 'Robert',
-                lastName: 'Moreau',
                 profession: 'Patient',
-                dateOfBirth: '1972-11-08',
-                gender: 'M',
-                diagnosis: 'Mélanome - Stade III',
-                notes: 'Immunothérapie prévue'
-            }
+                data: {
+                    firstName: 'Robert',
+                    lastName: 'Moreau',
+                    dateOfBirth: '1972-11-08',
+                    gender: 'M',
+                    diagnosis: 'Mélanome - Stade III',
+                    notes: 'Immunothérapie prévue',
+                },
+            },
         ];
 
-        const count = await this.patientRecordModel.countDocuments();
-        if (count === 0) {
-            for (const patient of patients) {
-                await this.patientRecordModel.create(patient);
-                console.log(`  ➕ Patient créé: ${patient.firstName} ${patient.lastName}`);
-            }
+        for (const patient of patients) {
+            await this.prisma.patientRecord.create({ data: patient });
+            console.log(`  ➕ Patient créé: ${(patient.data as any).firstName} ${(patient.data as any).lastName}`);
         }
     }
 
     private async seedMeetings() {
-        const count = await this.meetingModel.countDocuments();
+        const count = await this.prisma.meeting.count();
         if (count > 0) return;
 
-        const users = await this.userModel.find().populate('profession');
-        const patients = await this.patientRecordModel.find();
+        const users = await this.prisma.user.findMany({ include: { profession: true } });
 
-        if (users.length < 2 || patients.length === 0) {
+        if (users.length < 2) {
             console.log('  ⚠️ Pas assez de données pour créer des réunions');
             return;
         }
 
-        const today = new Date();
-        const tomorrow = new Date(today);
+        const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        const nextWeek = new Date(today);
+        const nextWeek = new Date();
         nextWeek.setDate(nextWeek.getDate() + 7);
 
-        const meetings = [
-            {
+        // Meeting 1
+        await this.prisma.meeting.create({
+            data: {
                 roomId: 'demo-room-001',
                 subject: 'RCP - Cas Michel Dubois',
                 description: 'Réunion de concertation pluridisciplinaire pour discuter du plan de traitement',
                 time: '14:00',
-                patient: patients[0]._id,
-                participants: users.slice(0, 4).map(u => ({
-                    user: u._id,
-                    profession: u.profession._id || u.profession,
-                    isVisible: true,
-                    showProfession: true,
-                    formFilled: false
-                })),
-                roomAdmin: users[0]._id,
+                roomAdminId: users[0].id,
                 status: 'pending',
                 scheduledDate: tomorrow,
-                duration: '1h'
+                duration: 60,
+                participants: {
+                    create: users.slice(0, 4).map(u => ({
+                        userId: u.id,
+                        professionId: u.professionId,
+                        isVisible: true,
+                        showProfession: true,
+                        formFilled: false,
+                    })),
+                },
             },
-            {
+        });
+        console.log('  ➕ Réunion créée: RCP - Cas Michel Dubois');
+
+        // Meeting 2
+        await this.prisma.meeting.create({
+            data: {
                 roomId: 'demo-room-002',
                 subject: 'Suivi post-opératoire - Mme Lambert',
-                description: 'Discussion sur les résultats de l\'intervention et planification de la suite',
+                description: "Discussion sur les résultats de l'intervention et planification de la suite",
                 time: '10:30',
-                patient: patients[1]?._id || patients[0]._id,
-                participants: users.slice(0, 3).map(u => ({
-                    user: u._id,
-                    profession: u.profession._id || u.profession,
-                    isVisible: true,
-                    showProfession: true,
-                    formFilled: false
-                })),
-                roomAdmin: users[0]._id,
+                roomAdminId: users[0].id,
                 status: 'pending',
                 scheduledDate: nextWeek,
-                duration: '45min'
-            }
-        ];
-
-        for (const meeting of meetings) {
-            await this.meetingModel.create(meeting);
-            console.log(`  ➕ Réunion créée: ${meeting.subject}`);
-        }
+                duration: 45,
+                participants: {
+                    create: users.slice(0, 3).map(u => ({
+                        userId: u.id,
+                        professionId: u.professionId,
+                        isVisible: true,
+                        showProfession: true,
+                        formFilled: false,
+                    })),
+                },
+            },
+        });
+        console.log('  ➕ Réunion créée: Suivi post-opératoire - Mme Lambert');
     }
 }
