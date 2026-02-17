@@ -80,6 +80,8 @@ export function serializeMeeting(m: any) {
     subject: m.subject,
     description: m.description,
     time: m.time,
+    patientFirstName: m.patientFirstName,
+    patientLastName: m.patientLastName,
     participants: (m.participants ?? []).map(serializeMeetingParticipant),
     roomAdmin: m.roomAdmin ? serializeUser(m.roomAdmin) : m.roomAdminId,
     status: m.status,

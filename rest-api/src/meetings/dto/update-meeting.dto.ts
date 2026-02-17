@@ -34,6 +34,14 @@ export class UpdateMeetingDto {
 
     @IsString()
     @IsOptional()
+    patientFirstName?: string;
+
+    @IsString()
+    @IsOptional()
+    patientLastName?: string;
+
+    @IsString()
+    @IsOptional()
     @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'time must be in HH:mm format' })
     time?: string;
 

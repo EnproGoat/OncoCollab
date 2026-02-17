@@ -8,6 +8,8 @@ interface Meeting {
     subject: string;
     description?: string;
     time: string;
+    patientFirstName?: string;
+    patientLastName?: string;
     participants: {
         user: any;
         profession: any;
@@ -53,11 +55,25 @@ const Meetings: React.FC = () => {
         scheduledDate: '',
         time: '',
         duration: 30,
+        patientFirstName: '',
+        patientLastName: '',
     });
     const [allUsers, setAllUsers] = React.useState<any[]>([]);
     const [selectedParticipants, setSelectedParticipants] = React.useState<string[]>([]);
     const [createError, setCreateError] = React.useState('');
     const [createLoading, setCreateLoading] = React.useState(false);
+
+    // Edit meeting details state (admin only)
+    const [detailsForm, setDetailsForm] = React.useState({
+        subject: '',
+        description: '',
+        time: '',
+        duration: 30,
+        patientFirstName: '',
+        patientLastName: '',
+    });
+    const [detailsSaving, setDetailsSaving] = React.useState(false);
+    const [detailsError, setDetailsError] = React.useState('');
 
     React.useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -104,9 +120,10 @@ const Meetings: React.FC = () => {
         const myRecord = myParticipant?.patientRecord;
         // Pre-fill with user's OWN record if they already filled, otherwise empty
         const base: Record<string, any> = myRecord ? { ...myRecord } : {};
-        for (const f of MANDATORY_FIELDS) {
-            if (!(f in base)) base[f] = '';
-        }
+        // Auto-fill locked fields: patient name from meeting, profession from current user
+        base.firstName = meeting.patientFirstName || '';
+        base.lastName = meeting.patientLastName || '';
+        base.profession = user?.profession?.name || '';
         setEditForm(base);
         setIsModalOpen(true);
     };
@@ -114,7 +131,45 @@ const Meetings: React.FC = () => {
     const handleOpenDetailsModal = (meeting: Meeting) => {
         setSelectedMeeting(meeting);
         setModalType('details');
+        setDetailsForm({
+            subject: meeting.subject,
+            description: meeting.description || '',
+            time: meeting.time,
+            duration: meeting.duration,
+            patientFirstName: meeting.patientFirstName || '',
+            patientLastName: meeting.patientLastName || '',
+        });
+        setDetailsError('');
         setIsModalOpen(true);
+    };
+
+    const isAdmin = (meeting: Meeting) => meeting.roomAdmin?.id === user?.id;
+
+    const handleSaveDetails = async () => {
+        if (!selectedMeeting || !user?.id) return;
+        if (!detailsForm.subject.trim() || !detailsForm.time.trim()) {
+            setDetailsError('Sujet et heure sont obligatoires');
+            return;
+        }
+        setDetailsSaving(true);
+        setDetailsError('');
+        try {
+            await api.updateMeeting(selectedMeeting.id, {
+                subject: detailsForm.subject.trim(),
+                description: detailsForm.description.trim(),
+                time: detailsForm.time,
+                duration: detailsForm.duration,
+                patientFirstName: detailsForm.patientFirstName.trim(),
+                patientLastName: detailsForm.patientLastName.trim(),
+            }, user.id);
+            const updatedMeetings = await api.getMeetingsByParticipant(user.id);
+            setMeetings(updatedMeetings);
+            setIsModalOpen(false);
+        } catch (error: any) {
+            setDetailsError(error.message || 'Erreur lors de la sauvegarde');
+        } finally {
+            setDetailsSaving(false);
+        }
     };
 
     const handleAddField = () => {
@@ -163,9 +218,9 @@ const Meetings: React.FC = () => {
             setMeetings(updatedMeetings);
 
             setIsModalOpen(false);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Erreur sauvegarde:', error);
-            setSaveError('Erreur lors de la sauvegarde');
+            setSaveError(error.message || 'Erreur lors de la sauvegarde');
         }
     };
 
@@ -175,7 +230,7 @@ const Meetings: React.FC = () => {
 
     const handleCreateMeeting = async () => {
         if (!user?.id) return;
-        if (!createForm.subject || !createForm.scheduledDate || !createForm.time || !createForm.duration) {
+        if (!createForm.subject || !createForm.scheduledDate || !createForm.time || !createForm.duration || !createForm.patientFirstName.trim() || !createForm.patientLastName.trim()) {
             setCreateError('Veuillez remplir tous les champs obligatoires');
             return;
         }
@@ -195,6 +250,8 @@ const Meetings: React.FC = () => {
                 subject: createForm.subject,
                 description: createForm.description,
                 time: createForm.time,
+                patientFirstName: createForm.patientFirstName.trim(),
+                patientLastName: createForm.patientLastName.trim(),
                 participants,
                 roomAdmin: user.id,
                 scheduledDate: new Date(createForm.scheduledDate).toISOString(),
@@ -204,7 +261,7 @@ const Meetings: React.FC = () => {
             const updatedMeetings = await api.getMeetingsByParticipant(user.id);
             setMeetings(updatedMeetings);
             setIsCreateModalOpen(false);
-            setCreateForm({ subject: '', description: '', scheduledDate: '', time: '', duration: 30 });
+            setCreateForm({ subject: '', description: '', scheduledDate: '', time: '', duration: 30, patientFirstName: '', patientLastName: '' });
             setSelectedParticipants([]);
         } catch (error: any) {
             setCreateError(error.message || 'Erreur lors de la création');
@@ -243,24 +300,110 @@ const Meetings: React.FC = () => {
                         <div className="p-6">
                             {modalType === 'details' ? (
                                 <div className="space-y-4">
-                                    <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                                        <div className="text-slate-400 text-sm mb-1">Titre</div>
-                                        <div className="text-white font-semibold text-lg">{selectedMeeting.subject}</div>
-                                    </div>
-                                    {selectedMeeting.description && (
-                                        <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                                            <div className="text-slate-400 text-sm mb-1">Description</div>
-                                            <div className="text-white">{selectedMeeting.description}</div>
-                                        </div>
+                                    {isAdmin(selectedMeeting) ? (
+                                        <>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">Sujet <span className="text-red-400">*</span></label>
+                                                <input
+                                                    type="text"
+                                                    value={detailsForm.subject}
+                                                    onChange={(e) => setDetailsForm({ ...detailsForm, subject: e.target.value })}
+                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+                                                <textarea
+                                                    value={detailsForm.description}
+                                                    onChange={(e) => setDetailsForm({ ...detailsForm, description: e.target.value })}
+                                                    rows={3}
+                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors resize-none"
+                                                />
+                                            </div>
+                                            <div className="border-t border-slate-700 pt-4">
+                                                <h3 className="text-sm font-semibold text-teal-400 mb-3 flex items-center gap-2">
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                    </svg>
+                                                    Patient concerné
+                                                </h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-slate-300 mb-2">Nom du patient</label>
+                                                        <input
+                                                            type="text"
+                                                            value={detailsForm.patientLastName}
+                                                            onChange={(e) => setDetailsForm({ ...detailsForm, patientLastName: e.target.value })}
+                                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-slate-300 mb-2">Prénom du patient</label>
+                                                        <input
+                                                            type="text"
+                                                            value={detailsForm.patientFirstName}
+                                                            onChange={(e) => setDetailsForm({ ...detailsForm, patientFirstName: e.target.value })}
+                                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-300 mb-2">Heure <span className="text-red-400">*</span></label>
+                                                    <input
+                                                        type="time"
+                                                        value={detailsForm.time}
+                                                        onChange={(e) => setDetailsForm({ ...detailsForm, time: e.target.value })}
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-300 mb-2">Durée (min)</label>
+                                                    <input
+                                                        type="number"
+                                                        min={5}
+                                                        step={5}
+                                                        value={detailsForm.duration}
+                                                        onChange={(e) => setDetailsForm({ ...detailsForm, duration: parseInt(e.target.value) || 0 })}
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                                    />
+                                                </div>
+                                            </div>
+                                            {detailsError && (
+                                                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+                                                    {detailsError}
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                                <div className="text-slate-400 text-sm mb-1">Titre</div>
+                                                <div className="text-white font-semibold text-lg">{selectedMeeting.subject}</div>
+                                            </div>
+                                            {selectedMeeting.description && (
+                                                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                                    <div className="text-slate-400 text-sm mb-1">Description</div>
+                                                    <div className="text-white">{selectedMeeting.description}</div>
+                                                </div>
+                                            )}
+                                            {(selectedMeeting.patientLastName || selectedMeeting.patientFirstName) && (
+                                                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                                    <div className="text-slate-400 text-sm mb-1">Patient concerné</div>
+                                                    <div className="text-white font-semibold text-lg">{selectedMeeting.patientLastName} {selectedMeeting.patientFirstName}</div>
+                                                </div>
+                                            )}
+                                            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                                <div className="text-slate-400 text-sm mb-1">Heure</div>
+                                                <div className="text-white font-semibold text-lg">{selectedMeeting.time}</div>
+                                            </div>
+                                            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                                <div className="text-slate-400 text-sm mb-1">Durée</div>
+                                                <div className="text-white font-semibold text-lg">{selectedMeeting.duration} min</div>
+                                            </div>
+                                        </>
                                     )}
-                                    <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                                        <div className="text-slate-400 text-sm mb-1">Heure</div>
-                                        <div className="text-white font-semibold text-lg">{selectedMeeting.time}</div>
-                                    </div>
-                                    <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                                        <div className="text-slate-400 text-sm mb-1">Durée</div>
-                                        <div className="text-white font-semibold text-lg">{selectedMeeting.duration} min</div>
-                                    </div>
                                     <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
                                         <div className="text-slate-400 text-sm mb-1">Participants</div>
                                         <div className="flex flex-wrap gap-2 mt-2">
@@ -288,8 +431,8 @@ const Meetings: React.FC = () => {
                                                     type="text"
                                                     value={(editForm[key] as string) || ''}
                                                     onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
-                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
-                                                    placeholder={`Entrez ${MANDATORY_LABELS[key] || key}`}
+                                                    readOnly
+                                                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-400 cursor-not-allowed"
                                                 />
                                             </div>
                                         ))}
@@ -307,7 +450,7 @@ const Meetings: React.FC = () => {
                                                 <div key={key} className="flex gap-2 items-start">
                                                     <div className="flex-1">
                                                         <label className="block text-sm font-medium text-slate-300 mb-2 capitalize">
-                                                            {key.replace(/([A-Z])/g, ' $1').trim()}
+                                                            {key.replace(/([a-z])([A-Z])/g, '$1 $2')}
                                                         </label>
                                                         <input
                                                             type="text"
@@ -376,7 +519,7 @@ const Meetings: React.FC = () => {
                             )}
                         </div>
 
-                        {modalType === 'patient' && (
+                        {(modalType === 'patient' || (modalType === 'details' && isAdmin(selectedMeeting))) && (
                             <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-800 bg-slate-900/50">
                                 <button
                                     onClick={() => setIsModalOpen(false)}
@@ -385,13 +528,26 @@ const Meetings: React.FC = () => {
                                     Annuler
                                 </button>
                                 <button
-                                    onClick={handleSaveForm}
-                                    className="px-5 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-medium transition-colors flex items-center gap-2"
+                                    onClick={modalType === 'patient' ? handleSaveForm : handleSaveDetails}
+                                    disabled={modalType === 'details' && detailsSaving}
+                                    className="px-5 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium transition-colors flex items-center gap-2"
                                 >
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    Enregistrer
+                                    {modalType === 'details' && detailsSaving ? (
+                                        <>
+                                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                            </svg>
+                                            Sauvegarde...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Enregistrer
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         )}
@@ -445,6 +601,42 @@ const Meetings: React.FC = () => {
                                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors resize-none"
                                     placeholder="Description (optionnelle)"
                                 />
+                            </div>
+
+                            {/* Patient fields */}
+                            <div className="border-t border-slate-700 pt-5">
+                                <h3 className="text-sm font-semibold text-teal-400 mb-4 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                    Patient concerné
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            Nom du patient <span className="text-red-400">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={createForm.patientLastName}
+                                            onChange={(e) => setCreateForm({ ...createForm, patientLastName: e.target.value })}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                            placeholder="Nom du patient"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            Prénom du patient <span className="text-red-400">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={createForm.patientFirstName}
+                                            onChange={(e) => setCreateForm({ ...createForm, patientFirstName: e.target.value })}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors"
+                                            placeholder="Prénom du patient"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -615,10 +807,12 @@ const Meetings: React.FC = () => {
                                                 {meeting.subject}
                                             </h3>
                                         </div>
-                                        <p className="text-slate-400 text-sm flex items-center gap-2">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
-                                            {meeting.subject}
-                                        </p>
+                                        {meeting.patientLastName && meeting.patientFirstName && (
+                                            <p className="text-slate-400 text-sm flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                                                Patient : {meeting.patientLastName} {meeting.patientFirstName}
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">

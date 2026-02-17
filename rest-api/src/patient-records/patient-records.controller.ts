@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, HttpException, HttpStatus, Req } from '@nestjs/common';
 import { PatientRecordsService } from './patient-records.service';
-import { CreatePatientRecordDto, UpdatePatientRecordDto } from './dto/patient-record.dto';
+import type { Request } from 'express';
 
 @Controller('patient-records')
 export class PatientRecordsController {
@@ -17,18 +17,20 @@ export class PatientRecordsController {
   }
 
   @Post()
-  async createPatientRecord(@Body() createPatientRecordDto: CreatePatientRecordDto) {
+  async createPatientRecord(@Req() req: Request) {
     try {
-      return await this.patientRecordsService.create(createPatientRecordDto);
+      return await this.patientRecordsService.create(req.body);
     } catch (error) {
-      throw new HttpException('Failed to create patient record', HttpStatus.INTERNAL_SERVER_ERROR);
+      console.error('Failed to create patient record:', error);
+      const message = error instanceof Error ? error.message : 'Failed to create patient record';
+      throw new HttpException(message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
   @Put(':id')
-  async updatePatientRecord(@Param('id') id: string, @Body() updatePatientRecordDto: UpdatePatientRecordDto) {
+  async updatePatientRecord(@Param('id') id: string, @Req() req: Request) {
     try {
-      return await this.patientRecordsService.update(id, updatePatientRecordDto);
+      return await this.patientRecordsService.update(id, req.body);
     } catch (error) {
       throw new HttpException('Failed to update patient record', HttpStatus.INTERNAL_SERVER_ERROR);
     }

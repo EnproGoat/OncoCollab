@@ -13,7 +13,9 @@ const MANDATORY_LABELS: Record<string, string> = {
 };
 
 const SERVER_URL = import.meta.env.VITE_WS_URL || "http://localhost:4000";
-const ICE_SERVERS = {
+
+// ICE servers par défaut (coturn local ou env vars)
+const DEFAULT_ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: import.meta.env.VITE_STUN_URL || 'stun:stun.l.google.com:19302' },
     {
@@ -23,6 +25,24 @@ const ICE_SERVERS = {
     }
   ],
 };
+
+// Si une clé API metered.ca est fournie, les ICE servers sont récupérés dynamiquement
+// (VITE_METERED_API_KEY doit être défini dans les build args)
+const METERED_API_KEY = import.meta.env.VITE_METERED_API_KEY;
+
+async function fetchIceServers(): Promise<RTCConfiguration> {
+  if (!METERED_API_KEY) return DEFAULT_ICE_SERVERS;
+  try {
+    const response = await fetch(
+      `https://cedlab.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`
+    );
+    const iceServers = await response.json();
+    return { iceServers };
+  } catch {
+    console.warn('Impossible de récupérer les ICE servers metered.ca, utilisation du fallback.');
+    return DEFAULT_ICE_SERVERS;
+  }
+}
 
 const MicIcon = ({ isEnabled }: { isEnabled: boolean }) => (
   <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -92,6 +112,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const iceConfigRef = useRef<RTCConfiguration>(DEFAULT_ICE_SERVERS);
 
   const [myId, setMyId] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -137,6 +158,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   const [chatMessages, setChatMessages] = useState<Array<{content: string, senderName: string, timestamp: string, isOwn: boolean}>>([]);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchIceServers().then(config => { iceConfigRef.current = config; });
+  }, []);
 
   useEffect(() => {
     const loadMeetingData = async () => {
@@ -308,7 +333,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ onLeave, initialMicOn = true, ini
   }, [initialMicOn, initialCamOn, selectedVideoDevice, selectedAudioDevice]);
 
   const createPeerConnection = useCallback((targetId: string, stream: MediaStream) => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(iceConfigRef.current);
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {

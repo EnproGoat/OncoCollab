@@ -117,6 +117,7 @@ services:
       - ./visio-app/components:/app/components
       - ./visio-app/public:/app/public
       - ./visio-app/types:/app/types
+      - ./visio-app/vite.config.ts:/app/vite.config.ts
       - /app/node_modules
 
   generation_rapport:

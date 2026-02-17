@@ -1,6 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreatePatientRecordDto, UpdatePatientRecordDto } from './dto/patient-record.dto';
 import { serializePatientRecord } from '../common/serializers/serializers';
 import { seedPatientRecords } from './seed-data';
 
@@ -33,8 +32,8 @@ export class PatientRecordsService implements OnModuleInit {
     return serializePatientRecord(record);
   }
 
-  async create(createPatientRecordDto: CreatePatientRecordDto) {
-    const { profession, ...dynamicData } = createPatientRecordDto;
+  async create(data: Record<string, any>) {
+    const { profession, ...dynamicData } = data;
     const record = await this.prisma.patientRecord.create({
       data: {
         profession: profession || 'Patient',
@@ -44,11 +43,11 @@ export class PatientRecordsService implements OnModuleInit {
     return serializePatientRecord(record);
   }
 
-  async update(id: string, updatePatientRecordDto: UpdatePatientRecordDto) {
+  async update(id: string, data: Record<string, any>) {
     const existing = await this.prisma.patientRecord.findUnique({
       where: { id },
     });
-    const { profession, ...dynamicFields } = updatePatientRecordDto;
+    const { profession, ...dynamicFields } = data;
     const mergedData = {
       ...((existing?.data as object) ?? {}),
       ...dynamicFields,

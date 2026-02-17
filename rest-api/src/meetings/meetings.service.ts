@@ -28,6 +28,8 @@ export class MeetingsService {
                 subject: createMeetingDto.subject,
                 description: createMeetingDto.description,
                 time: createMeetingDto.time,
+                patientFirstName: createMeetingDto.patientFirstName,
+                patientLastName: createMeetingDto.patientLastName,
                 roomAdminId: createMeetingDto.roomAdmin,
                 scheduledDate: new Date(createMeetingDto.scheduledDate),
                 duration: createMeetingDto.duration,
@@ -113,11 +115,30 @@ export class MeetingsService {
         if (scalarFields.subject) updateData.subject = scalarFields.subject;
         if (scalarFields.description !== undefined) updateData.description = scalarFields.description;
         if (scalarFields.time) updateData.time = scalarFields.time;
+        if (scalarFields.patientFirstName !== undefined) updateData.patientFirstName = scalarFields.patientFirstName;
+        if (scalarFields.patientLastName !== undefined) updateData.patientLastName = scalarFields.patientLastName;
         if (scalarFields.roomAdmin) updateData.roomAdminId = scalarFields.roomAdmin;
         if (scalarFields.status) updateData.status = scalarFields.status;
         if (scalarFields.scheduledDate) updateData.scheduledDate = new Date(scalarFields.scheduledDate);
         if (scalarFields.startedAt) updateData.startedAt = new Date(scalarFields.startedAt);
         if (scalarFields.duration) updateData.duration = scalarFields.duration;
+
+        // If patient name changed, propagate to all linked patient records
+        if (scalarFields.patientFirstName !== undefined || scalarFields.patientLastName !== undefined) {
+            const participantsWithRecords = meeting.participants.filter(p => p.patientRecordId);
+            for (const p of participantsWithRecords) {
+                const record = await this.prisma.patientRecord.findUnique({ where: { id: p.patientRecordId! } });
+                if (record) {
+                    const data = (typeof record.data === 'object' && record.data !== null ? record.data : {}) as Record<string, any>;
+                    if (scalarFields.patientFirstName !== undefined) data.firstName = scalarFields.patientFirstName;
+                    if (scalarFields.patientLastName !== undefined) data.lastName = scalarFields.patientLastName;
+                    await this.prisma.patientRecord.update({
+                        where: { id: p.patientRecordId! },
+                        data: { data },
+                    });
+                }
+            }
+        }
 
         if (dtoParticipants) {
             // Replace participants: delete existing, create new

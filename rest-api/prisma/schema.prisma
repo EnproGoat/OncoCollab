@@ -67,12 +67,14 @@ model PatientRecord {
 }
 
 model Meeting {
-  id            String    @id @default(uuid())
-  roomId        String    @unique
-  subject       String
-  description   String?
-  time          String
-  roomAdminId   String
+  id               String    @id @default(uuid())
+  roomId           String    @unique
+  subject          String
+  description      String?
+  time             String
+  patientFirstName String?
+  patientLastName  String?
+  roomAdminId      String
   roomAdmin     User          @relation("MeetingAdmin", fields: [roomAdminId], references: [id])
   status        String        @default("pending")
   scheduledDate DateTime

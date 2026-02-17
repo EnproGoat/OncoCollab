@@ -60,7 +60,10 @@ export const api = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data),
         });
-        if (!response.ok) throw new Error("Failed to create patient record");
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.message || "Failed to create patient record");
+        }
         return response.json();
     },
 
