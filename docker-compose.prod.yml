@@ -178,9 +178,9 @@ services:
       context: ./visio-app
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: https://api-nexuscare.cedlab.ovh
-        VITE_WS_URL: https://ws-nexuscare.cedlab.ovh
-        VITE_REPORT_API_URL: https://reports-nexuscare.cedlab.ovh
+        VITE_API_URL: https://api.${DOMAIN}
+        VITE_WS_URL: https://ws.${DOMAIN}
+        VITE_REPORT_API_URL: https://reports.${DOMAIN}
         # Serveur TURN externe metered.ca (VITE_METERED_API_KEY suffit, les URLs sont récupérées dynamiquement)
         VITE_METERED_API_KEY: ${VITE_METERED_API_KEY}
         # Fallback local si pas de clé metered (non utilisé en prod)
