@@ -35,7 +35,7 @@ services:
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
 
-      # Dashboard (accessible via traefik.DOMAIN, protected by BasicAuth)
+      # Dashboard (accessible via traefik-PROJECT.DOMAIN, protected by BasicAuth)
       - --api.dashboard=true
       - --api.insecure=false
 
@@ -58,7 +58,7 @@ services:
     labels:
       - traefik.enable=true
       # Dashboard router
-      - traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN}`)
+      - traefik.http.routers.traefik-dashboard.rule=Host(`traefik-${PROJECT}.${DOMAIN}`)
       - traefik.http.routers.traefik-dashboard.entrypoints=websecure
       - traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt
       - traefik.http.routers.traefik-dashboard.service=api@internal
@@ -129,7 +129,7 @@ services:
       - oncocollab-network
     labels:
       - traefik.enable=true
-      - traefik.http.routers.rest-api.rule=Host(`api.${DOMAIN}`)
+      - traefik.http.routers.rest-api.rule=Host(`api-${PROJECT}.${DOMAIN}`)
       - traefik.http.routers.rest-api.entrypoints=websecure
       - traefik.http.routers.rest-api.tls.certresolver=letsencrypt
       - traefik.http.services.rest-api.loadbalancer.server.port=3000
@@ -164,7 +164,7 @@ services:
       - oncocollab-network
     labels:
       - traefik.enable=true
-      - traefik.http.routers.websocket.rule=Host(`ws.${DOMAIN}`)
+      - traefik.http.routers.websocket.rule=Host(`ws-${PROJECT}.${DOMAIN}`)
       - traefik.http.routers.websocket.entrypoints=websecure
       - traefik.http.routers.websocket.tls.certresolver=letsencrypt
       - traefik.http.services.websocket.loadbalancer.server.port=4000
@@ -180,9 +180,9 @@ services:
       context: ./visio-app
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: https://api.${DOMAIN}
-        VITE_WS_URL: https://ws.${DOMAIN}
-        VITE_REPORT_API_URL: https://reports.${DOMAIN}
+        VITE_API_URL: https://api-${PROJECT}.${DOMAIN}
+        VITE_WS_URL: https://ws-${PROJECT}.${DOMAIN}
+        VITE_REPORT_API_URL: https://reports-${PROJECT}.${DOMAIN}
         # Serveur TURN externe metered.ca (VITE_METERED_API_KEY suffit, les URLs sont récupérées dynamiquement)
         VITE_METERED_API_KEY: ${VITE_METERED_API_KEY}
         # Fallback local si pas de clé metered (non utilisé en prod)
@@ -200,7 +200,7 @@ services:
       - oncocollab-network
     labels:
       - traefik.enable=true
-      - traefik.http.routers.visio-app.rule=Host(`app.${DOMAIN}`)
+      - traefik.http.routers.visio-app.rule=Host(`${PROJECT}.${DOMAIN}`)
       - traefik.http.routers.visio-app.entrypoints=websecure
       - traefik.http.routers.visio-app.tls.certresolver=letsencrypt
       - traefik.http.services.visio-app.loadbalancer.server.port=80
@@ -227,7 +227,7 @@ services:
       - oncocollab-network
     labels:
       - traefik.enable=true
-      - traefik.http.routers.generation-rapport.rule=Host(`reports.${DOMAIN}`)
+      - traefik.http.routers.generation-rapport.rule=Host(`reports-${PROJECT}.${DOMAIN}`)
       - traefik.http.routers.generation-rapport.entrypoints=websecure
       - traefik.http.routers.generation-rapport.tls.certresolver=letsencrypt
       - traefik.http.services.generation-rapport.loadbalancer.server.port=8000
