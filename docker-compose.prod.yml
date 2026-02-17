@@ -12,7 +12,7 @@ services:
   # TRAEFIK - Reverse Proxy + TLS Termination
   # ─────────────────────────────────────────────
   traefik:
-    image: traefik:v3.2
+    image: traefik:latest
     container_name: oncocollab-traefik
     restart: unless-stopped
     command:
