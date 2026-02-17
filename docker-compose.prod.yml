@@ -45,6 +45,8 @@ services:
       # Logging
       - --log.level=INFO
       - --accesslog=true
+    environment:
+      - DOCKER_API_VERSION=1.47
     ports:
       - "80:80"
       - "443:443"
